@@ -1,5 +1,6 @@
 import './style.css';
 import { Engine } from './core/Engine';
+import { drawPrototypeScene } from './graphics/PrototypeScene';
 import { GameState } from './types/game.types';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -30,4 +31,11 @@ if (!viewport || !canvas) {
 }
 
 const engine = new Engine(canvas, viewport);
-engine.clear();
+
+const render = (): void => {
+  engine.clear();
+  drawPrototypeScene(engine.getContext(), engine.width, engine.height);
+};
+
+engine.onResize(render);
+render();
