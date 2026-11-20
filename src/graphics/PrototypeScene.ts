@@ -11,15 +11,13 @@ const SceneColors = {
   cloud: '#ffffff',
   building: '#6f8fb3',
   buildingWindow: '#cfe6ff',
-  lynx: '#d98c3f',
-  lynxOutline: '#3b2412',
   airplane: '#f4f4f4',
   airplaneFold: '#9aa7b4',
   books: ['#c0392b', '#2e86c1', '#27ae60', '#8e44ad'],
   bookOutline: '#1e1e1e',
 } as const;
 
-const GROUND_Y = 300;
+export const GROUND_Y = 300;
 
 export function drawPrototypeScene(
   ctx: CanvasRenderingContext2D,
@@ -30,7 +28,6 @@ export function drawPrototypeScene(
   drawBuildings(ctx);
   drawClouds(ctx);
   drawGround(ctx, width, height);
-  drawLynx(ctx, 64, GROUND_Y);
   drawBookStack(ctx, 260, GROUND_Y, 16, 1);
   drawBookStack(ctx, 380, GROUND_Y, 24, 2);
   drawBookStack(ctx, 500, GROUND_Y, 32, 3);
@@ -106,19 +103,6 @@ function drawGround(ctx: CanvasRenderingContext2D, width: number, height: number
   ctx.moveTo(0, GROUND_Y);
   ctx.lineTo(width, GROUND_Y);
   ctx.stroke();
-}
-
-/** Lince provisional: rectángulo de 32x32 apoyado en el suelo. */
-function drawLynx(ctx: CanvasRenderingContext2D, x: number, groundY: number): void {
-  const size = 32;
-  const top = groundY - size;
-
-  ctx.fillStyle = SceneColors.lynx;
-  ctx.fillRect(x, top, size, size);
-
-  ctx.strokeStyle = SceneColors.lynxOutline;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x + 1, top + 1, size - 2, size - 2);
 }
 
 /**
