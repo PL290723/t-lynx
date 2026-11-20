@@ -13,8 +13,6 @@ const SceneColors = {
   buildingWindow: '#cfe6ff',
   airplane: '#f4f4f4',
   airplaneFold: '#9aa7b4',
-  books: ['#c0392b', '#2e86c1', '#27ae60', '#8e44ad'],
-  bookOutline: '#1e1e1e',
 } as const;
 
 export const GROUND_Y = 300;
@@ -28,9 +26,6 @@ export function drawPrototypeScene(
   drawBuildings(ctx);
   drawClouds(ctx);
   drawGround(ctx, width, height);
-  drawBookStack(ctx, 260, GROUND_Y, 16, 1);
-  drawBookStack(ctx, 380, GROUND_Y, 24, 2);
-  drawBookStack(ctx, 500, GROUND_Y, 32, 3);
   drawAirplane(ctx, 430, 236);
 }
 
@@ -103,33 +98,6 @@ function drawGround(ctx: CanvasRenderingContext2D, width: number, height: number
   ctx.moveTo(0, GROUND_Y);
   ctx.lineTo(width, GROUND_Y);
   ctx.stroke();
-}
-
-/**
- * Pila de libros apoyada en el suelo. El obstáculo mide 16 de ancho y
- * totalHeight de alto (16, 24 o 32), dividido entre la cantidad de libros.
- */
-function drawBookStack(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  groundY: number,
-  totalHeight: number,
-  bookCount: number,
-): void {
-  const width = 16;
-  const bookHeight = totalHeight / bookCount;
-
-  for (let i = 0; i < bookCount; i++) {
-    const y = groundY - bookHeight * (i + 1);
-    const color = SceneColors.books[i % SceneColors.books.length];
-
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, width, bookHeight);
-
-    ctx.strokeStyle = SceneColors.bookOutline;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, bookHeight - 1);
-  }
 }
 
 /** Avión de papel: triángulo (polígono) con moveTo / lineTo / fill. */
