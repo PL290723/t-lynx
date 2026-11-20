@@ -1,9 +1,12 @@
+type ResizeListener = () => void;
+
 export class Engine {
   private readonly logicalWidth = 640;
   private readonly logicalHeight = 360;
   private readonly context: CanvasRenderingContext2D;
   private readonly canvas: HTMLCanvasElement;
   private readonly viewport: HTMLElement;
+  private readonly resizeListeners: ResizeListener[] = [];
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -22,12 +25,25 @@ export class Engine {
     window.addEventListener('resize', this.resize);
   }
 
+  get width(): number {
+    return this.logicalWidth;
+  }
+
+  get height(): number {
+    return this.logicalHeight;
+  }
+
   clear(): void {
     this.context.clearRect(0, 0, this.logicalWidth, this.logicalHeight);
   }
 
   getContext(): CanvasRenderingContext2D {
     return this.context;
+  }
+
+  /** Registra una función que se ejecuta cada vez que el canvas cambia de tamaño. */
+  onResize(listener: ResizeListener): void {
+    this.resizeListeners.push(listener);
   }
 
   private readonly resize = (): void => {
@@ -58,5 +74,9 @@ export class Engine {
     this.canvas.style.height = `${this.logicalHeight * scale}px`;
     this.context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     this.context.imageSmoothingEnabled = false;
+
+    for (const listener of this.resizeListeners) {
+      listener();
+    }
   };
 }
