@@ -1,5 +1,6 @@
 import './style.css';
 import { Engine } from './core/Engine';
+import { GameLoop } from './core/GameLoop';
 import { drawPrototypeScene } from './graphics/PrototypeScene';
 import { InputAction, InputHandler } from './systems/InputHandler';
 import { GameState } from './types/game.types';
@@ -16,6 +17,7 @@ app.innerHTML = `
   <header class="game-header">
     <h1>T-Lynx</h1>
     <p>Estado actual: ${state}</p>
+    <p class="loop-debug">FPS: — · Updates/s: —</p>
     <pre class="input-debug" aria-live="polite"></pre>
   </header>
   <main class="game-viewport" aria-label="Área de juego">
@@ -27,30 +29,36 @@ app.innerHTML = `
 
 const viewport = app.querySelector<HTMLElement>('.game-viewport');
 const canvas = app.querySelector<HTMLCanvasElement>('.game-canvas');
+const loopDebug = app.querySelector<HTMLParagraphElement>('.loop-debug');
 const inputDebug = app.querySelector<HTMLPreElement>('.input-debug');
 
-if (!viewport || !canvas || !inputDebug) {
+if (!viewport || !canvas || !loopDebug || !inputDebug) {
   throw new Error('No se pudo crear el área de juego');
 }
 
 const engine = new Engine(canvas, viewport);
 const input = new InputHandler(window, viewport);
 
-const render = (): void => {
-  engine.clear();
-  drawPrototypeScene(engine.getContext(), engine.width, engine.height);
-};
+const rectangle = {
+  width: 24,
+  height: 24,
+  y: 108,
+  speed: 120,
+  color: '#6d28d9',
+} as const;
+const trackLength = engine.width + rectangle.width;
+let previousDistance = 0;
+let distance = 0;
 
-engine.onResize(render);
-render();
-
-// --- Depuración de entradas (temporal: se reemplaza cuando exista el GameLoop de M-03) ---
 const counters: Record<InputAction, { justPressed: number; released: number }> = {
   [InputAction.Jump]: { justPressed: 0, released: 0 },
   [InputAction.Duck]: { justPressed: 0, released: 0 },
 };
 
-const debugLoop = (): void => {
+const update = (dt: number): void => {
+  previousDistance = distance;
+  distance = (distance + rectangle.speed * dt) % trackLength;
+
   const lines: string[] = [];
 
   for (const action of Object.values(InputAction)) {
@@ -69,9 +77,31 @@ const debugLoop = (): void => {
     );
   }
 
-  inputDebug.textContent = lines.join('\n');
+  const inputText = lines.join('\n');
+  if (inputDebug.textContent !== inputText) {
+    inputDebug.textContent = inputText;
+  }
+
   input.update();
-  requestAnimationFrame(debugLoop);
 };
 
-requestAnimationFrame(debugLoop);
+const render = (alpha: number): void => {
+  const ctx = engine.getContext();
+  engine.clear();
+  drawPrototypeScene(ctx, engine.width, engine.height);
+
+  // Al dar la vuelta, interpola hacia delante y aplica el módulo al final.
+  const nextDistance = distance < previousDistance ? distance + trackLength : distance;
+  const interpolatedDistance = previousDistance + (nextDistance - previousDistance) * alpha;
+  const x = (interpolatedDistance % trackLength) - rectangle.width;
+  ctx.fillStyle = rectangle.color;
+  ctx.fillRect(x, rectangle.y, rectangle.width, rectangle.height);
+
+  const loopText = `FPS: ${loop.fps || '—'} · Updates/s: ${loop.ups || '—'}`;
+  if (loopDebug.textContent !== loopText) {
+    loopDebug.textContent = loopText;
+  }
+};
+
+const loop = new GameLoop(update, render);
+loop.start();
