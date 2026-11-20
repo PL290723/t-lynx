@@ -38,6 +38,9 @@ body {
 
 .game-viewport {
   display: grid;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   flex: 1;
   place-items: center;
   width: 100%;
@@ -50,4 +53,12 @@ body {
   display: block;
   background: #000;
   image-rendering: pixelated;
+}
+
+.input-debug {
+  margin-top: 0.5rem;
+  font-family: Consolas, monospace;
+  font-size: 0.8rem;
+  text-align: left;
+  color: #9fe870;
 }
