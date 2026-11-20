@@ -1,9 +1,10 @@
 import './style.css';
 import { Engine } from './core/Engine';
 import { GameLoop } from './core/GameLoop';
-import { Player } from './entities/Player';
+import { Player, PlayerState } from './entities/Player';
 import { drawPrototypeScene } from './graphics/PrototypeScene';
 import { InputAction, InputHandler } from './systems/InputHandler';
+import { ObstacleGenerator } from './systems/ObstacleGenerator';
 import { GameState } from './types/game.types';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -20,6 +21,7 @@ app.innerHTML = `
     <p>Estado actual: ${state}</p>
     <p class="loop-debug">FPS: — · Updates/s: —</p>
     <p class="player-debug" aria-live="polite"></p>
+    <p class="obstacle-debug"></p>
     <pre class="input-debug" aria-live="polite"></pre>
   </header>
   <main class="game-viewport" aria-label="Área de juego">
@@ -33,15 +35,17 @@ const viewport = app.querySelector<HTMLElement>('.game-viewport');
 const canvas = app.querySelector<HTMLCanvasElement>('.game-canvas');
 const loopDebug = app.querySelector<HTMLParagraphElement>('.loop-debug');
 const playerDebug = app.querySelector<HTMLParagraphElement>('.player-debug');
+const obstacleDebug = app.querySelector<HTMLParagraphElement>('.obstacle-debug');
 const inputDebug = app.querySelector<HTMLPreElement>('.input-debug');
 
-if (!viewport || !canvas || !loopDebug || !playerDebug || !inputDebug) {
+if (!viewport || !canvas || !loopDebug || !playerDebug || !obstacleDebug || !inputDebug) {
   throw new Error('No se pudo crear el área de juego');
 }
 
 const engine = new Engine(canvas, viewport);
 const input = new InputHandler(window, viewport);
 const player = new Player(input);
+const obstacles = new ObstacleGenerator(engine.width);
 
 const counters: Record<InputAction, { justPressed: number; released: number }> = {
   [InputAction.Jump]: { justPressed: 0, released: 0 },
@@ -50,6 +54,9 @@ const counters: Record<InputAction, { justPressed: number; released: number }> =
 
 const update = (dt: number): void => {
   player.update(dt);
+  if (player.state !== PlayerState.Defeated) {
+    obstacles.update(dt);
+  }
 
   const lines: string[] = [];
 
@@ -88,11 +95,19 @@ const render = (alpha: number): void => {
   const ctx = engine.getContext();
   engine.clear();
   drawPrototypeScene(ctx, engine.width, engine.height);
+  obstacles.render(ctx, player.state === PlayerState.Defeated ? 1 : alpha);
   player.render(ctx, alpha);
 
   const loopText = `FPS: ${loop.fps || '—'} · Updates/s: ${loop.ups || '—'}`;
   if (loopDebug.textContent !== loopText) {
     loopDebug.textContent = loopText;
+  }
+
+  const obstacleText =
+    `Velocidad: ${obstacles.speed.toFixed(1)} px/s · Distancia: ${obstacles.distance.toFixed(1)} px` +
+    ` · Obstáculos activos: ${obstacles.activeObstacles.length} · Pool: ${obstacles.poolSize}`;
+  if (obstacleDebug.textContent !== obstacleText) {
+    obstacleDebug.textContent = obstacleText;
   }
 };
 
@@ -108,8 +123,10 @@ window.addEventListener('keydown', (event) => {
     player.defeat();
   } else if (event.code === 'KeyR') {
     player.reset();
+    obstacles.reset();
   } else if (event.code === 'KeyH') {
     player.showHitbox = !player.showHitbox;
+    obstacles.showHitboxes = player.showHitbox;
   }
 });
 

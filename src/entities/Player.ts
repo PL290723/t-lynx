@@ -8,7 +8,7 @@ import type { InputHandler } from '../systems/InputHandler';
 import { InputAction } from '../systems/InputHandler';
 
 const PLAYER_X = 64;
-const PLAYER_WIDTH = 32;
+export const PLAYER_WIDTH = 32;
 const PLAYER_HEIGHT = 32;
 const CROUCH_HEIGHT = 20;
 
@@ -19,6 +19,10 @@ const JUMP_MAX_HOLD_SECONDS = 0.22;
 const JUMP_MAX_HEIGHT = 170;
 const JUMP_RELEASE_MULTIPLIER = 0.45;
 const FAST_FALL_MULTIPLIER = 2.5;
+
+// Cota del vuelo al contar el empuje sostenido como parte del impulso inicial.
+export const PLAYER_MAX_JUMP_AIR_SECONDS =
+  (2 * (JUMP_IMPULSE + JUMP_HOLD_FORCE * JUMP_MAX_HOLD_SECONDS)) / GRAVITY;
 
 const RUN_FRAME_DURATION = 0.12;
 const DUCK_FRAME_DURATION = 0.2;
