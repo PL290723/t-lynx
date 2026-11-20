@@ -62,3 +62,10 @@ body {
   text-align: left;
   color: #9fe870;
 }
+
+.player-debug {
+  margin-top: 0.25rem;
+  font-family: Consolas, monospace;
+  font-size: 0.8rem;
+  color: #9fe870;
+}
