@@ -7,7 +7,7 @@ import {
 import type { InputHandler } from '../systems/InputHandler';
 import { InputAction } from '../systems/InputHandler';
 
-const PLAYER_X = 64;
+export const PLAYER_X = 64;
 export const PLAYER_WIDTH = 32;
 const PLAYER_HEIGHT = 32;
 const CROUCH_HEIGHT = 20;
