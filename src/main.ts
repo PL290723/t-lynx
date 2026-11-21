@@ -105,7 +105,8 @@ const render = (alpha: number): void => {
 
   const obstacleText =
     `Velocidad: ${obstacles.speed.toFixed(1)} px/s · Distancia: ${obstacles.distance.toFixed(1)} px` +
-    ` · Obstáculos activos: ${obstacles.activeObstacles.length} · Pool: ${obstacles.poolSize}`;
+    ` · Obstáculos activos: ${obstacles.activeObstacles.length} (aviones: ${obstacles.activeAirplanes})` +
+    ` · Pool: ${obstacles.poolSize} · Prob. avión: ${Math.round(obstacles.airplaneChance * 100)} %`;
   if (obstacleDebug.textContent !== obstacleText) {
     obstacleDebug.textContent = obstacleText;
   }
