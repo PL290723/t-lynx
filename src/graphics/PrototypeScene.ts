@@ -11,8 +11,6 @@ const SceneColors = {
   cloud: '#ffffff',
   building: '#6f8fb3',
   buildingWindow: '#cfe6ff',
-  airplane: '#f4f4f4',
-  airplaneFold: '#9aa7b4',
 } as const;
 
 export const GROUND_Y = 300;
@@ -26,7 +24,6 @@ export function drawPrototypeScene(
   drawBuildings(ctx);
   drawClouds(ctx);
   drawGround(ctx, width, height);
-  drawAirplane(ctx, 430, 236);
 }
 
 /** Color de fondo de día. */
@@ -97,26 +94,5 @@ function drawGround(ctx: CanvasRenderingContext2D, width: number, height: number
   ctx.beginPath();
   ctx.moveTo(0, GROUND_Y);
   ctx.lineTo(width, GROUND_Y);
-  ctx.stroke();
-}
-
-/** Avión de papel: triángulo (polígono) con moveTo / lineTo / fill. */
-function drawAirplane(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-  const width = 24;
-  const height = 16;
-
-  ctx.fillStyle = SceneColors.airplane;
-  ctx.beginPath();
-  ctx.moveTo(x, y + height / 2);
-  ctx.lineTo(x + width, y);
-  ctx.lineTo(x + width, y + height);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle = SceneColors.airplaneFold;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x, y + height / 2);
-  ctx.lineTo(x + width, y + height / 2 + 2);
   ctx.stroke();
 }
