@@ -19,12 +19,13 @@ export class Books extends Entity {
 
   constructor() {
     const height = BOOK_VARIANTS[0].height;
-    super(0, GROUND_Y - height, BOOKS_WIDTH, height);
+    super(0, GROUND_Y - height, BOOKS_WIDTH, height, 3, 2);
   }
 
   activate(x: number, variant: BookVariant): void {
     this.variant = variant;
     this.height = variant.height;
+    this.setHitboxInsets(3, Math.max(2, Math.min(4, Math.round(this.height / 8))));
     this.position.x = x;
     this.position.y = GROUND_Y - this.height;
     this.savePreviousPosition();

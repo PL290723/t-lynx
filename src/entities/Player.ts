@@ -1,5 +1,6 @@
 import { Entity } from './Entity';
 import { GROUND_Y } from '../graphics/PrototypeScene';
+import type { Rect } from '../types/game.types';
 import {
   SpriteAnimation,
   SpriteSheet,
@@ -42,7 +43,7 @@ export class Player extends Entity {
   private currentState: PlayerState = PlayerState.Running;
 
   constructor(input: InputHandler) {
-    super(PLAYER_X, GROUND_Y - PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT);
+    super(PLAYER_X, GROUND_Y - PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT, 3, 2);
     this.input = input;
   }
 
@@ -54,11 +55,12 @@ export class Player extends Entity {
     return this.velocityY;
   }
 
-  override get hitbox() {
+  override get hitbox(): Rect {
     const hitbox = super.hitbox;
 
     if (this.currentState === PlayerState.Ducking) {
-      hitbox.height = (PLAYER_HEIGHT - 6) / 2;
+      hitbox.height = (PLAYER_HEIGHT - 4) / 2;
+      hitbox.y = this.position.y + this.height - this.verticalHitboxInset - hitbox.height;
     }
 
     return hitbox;
