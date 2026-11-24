@@ -7,6 +7,7 @@ import { drawPrototypeScene } from './graphics/PrototypeScene';
 import { CollisionSystem } from './systems/CollisionSystem';
 import { InputAction, InputHandler } from './systems/InputHandler';
 import { ObstacleGenerator } from './systems/ObstacleGenerator';
+import { ScoreManager } from './systems/ScoreManager';
 import { GameState } from './types/game.types';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -24,6 +25,7 @@ app.innerHTML = `
     <p class="loop-debug">FPS: — · Updates/s: —</p>
     <p class="player-debug" aria-live="polite"></p>
     <p class="obstacle-debug"></p>
+    <p class="score-debug"></p>
     <pre class="input-debug" aria-live="polite"></pre>
   </header>
   <main class="game-viewport" aria-label="Área de juego">
@@ -40,6 +42,7 @@ const gameStateText = app.querySelector<HTMLSpanElement>('.game-state');
 const playerDebug = app.querySelector<HTMLParagraphElement>('.player-debug');
 const obstacleDebug = app.querySelector<HTMLParagraphElement>('.obstacle-debug');
 const inputDebug = app.querySelector<HTMLPreElement>('.input-debug');
+const scoreDebug = app.querySelector<HTMLParagraphElement>('.score-debug');
 
 if (
   !viewport ||
@@ -48,7 +51,8 @@ if (
   !gameStateText ||
   !playerDebug ||
   !obstacleDebug ||
-  !inputDebug
+  !inputDebug ||
+  !scoreDebug
 ) {
   throw new Error('No se pudo crear el área de juego');
 }
@@ -62,6 +66,22 @@ const input = new InputHandler(window, viewport);
 const player = new Player(input);
 const obstacles = new ObstacleGenerator(engine.width);
 const collisions = new CollisionSystem();
+const scoreManager = new ScoreManager();
+
+let lastMilestone = 0;
+scoreManager.onMilestone((milestone) => {
+  // M-12 reproducirá aquí el sonido de hito.
+  lastMilestone = milestone;
+});
+
+stateManager.subscribe((nextState) => {
+  if (nextState === GameState.Playing) {
+    scoreManager.reset();
+    lastMilestone = 0;
+  } else if (nextState === GameState.GameOver) {
+    scoreManager.finishRun();
+  }
+});
 
 const counters: Record<InputAction, { justPressed: number; released: number }> = {
   [InputAction.Jump]: { justPressed: 0, released: 0 },
@@ -82,6 +102,7 @@ const update = (dt: number): void => {
   } else if (stateManager.state === GameState.Playing) {
     player.update(dt);
     obstacles.update(dt);
+    scoreManager.update(obstacles.distance);
 
     const collision = collisions.firstCollision(player, obstacles.activeObstacles);
     if (collision) {
@@ -132,11 +153,15 @@ const render = (alpha: number): void => {
   const renderAlpha = isGameOver ? 1 : alpha;
   obstacles.render(ctx, renderAlpha);
   player.render(ctx, renderAlpha);
+  drawScore(ctx, engine.width, scoreManager.score, scoreManager.highScore);
 
   if (stateManager.state === GameState.Menu) {
     drawMessage(ctx, engine.width, engine.height, 'Presiona Espacio o toca para empezar');
   } else if (isGameOver) {
     drawMessage(ctx, engine.width, engine.height, 'GAME OVER - Presiona Espacio o toca para reintentar');
+    if (scoreManager.isNewRecord) {
+      drawNewRecord(ctx, engine.width, engine.height);
+    }
   }
 
   const loopText = `FPS: ${loop.fps || '—'} · Updates/s: ${loop.ups || '—'}`;
@@ -150,6 +175,13 @@ const render = (alpha: number): void => {
     ` · Pool: ${obstacles.poolSize} · Prob. avión: ${Math.round(obstacles.airplaneChance * 100)} %`;
   if (obstacleDebug.textContent !== obstacleText) {
     obstacleDebug.textContent = obstacleText;
+  }
+
+  const scoreText =
+    `Puntos: ${scoreManager.score} · Récord: ${scoreManager.highScore}` +
+    ` · Último hito: ${lastMilestone || '—'}`;
+  if (scoreDebug.textContent !== scoreText) {
+    scoreDebug.textContent = scoreText;
   }
 };
 
@@ -181,4 +213,28 @@ function drawMessage(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(message, width / 2, height / 2, width - 56);
+}
+
+/** Marcador provisional en el canvas (M-15 lo reemplaza por el HUD final). */
+function drawScore(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  score: number,
+  highScore: number,
+): void {
+  const pad = (value: number): string => String(value).padStart(5, '0');
+
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#1e2a38';
+  ctx.fillText(`HI ${pad(highScore)}  ${pad(score)}`, width - 12, 10);
+}
+
+function drawNewRecord(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffd84d';
+  ctx.fillText('NUEVO RÉCORD', width / 2, height / 2 + 40);
 }
