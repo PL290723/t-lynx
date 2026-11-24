@@ -1,28 +1,42 @@
 import type { Rect, Vector2 } from '../types/game.types';
 
-const HITBOX_INSET = 3;
-
 export abstract class Entity {
   readonly position: Vector2;
   readonly previousPosition: Vector2;
   width: number;
   height: number;
   showHitbox = false;
+  protected horizontalHitboxInset: number;
+  protected verticalHitboxInset: number;
 
-  protected constructor(x: number, y: number, width: number, height: number) {
+  protected constructor(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    horizontalHitboxInset = 3,
+    verticalHitboxInset = 2,
+  ) {
     this.position = { x, y };
     this.previousPosition = { x, y };
     this.width = width;
     this.height = height;
+    this.horizontalHitboxInset = horizontalHitboxInset;
+    this.verticalHitboxInset = verticalHitboxInset;
   }
 
   get hitbox(): Rect {
     return {
-      x: this.position.x + HITBOX_INSET,
-      y: this.position.y + HITBOX_INSET,
-      width: this.width - HITBOX_INSET * 2,
-      height: this.height - HITBOX_INSET * 2,
+      x: this.position.x + this.horizontalHitboxInset,
+      y: this.position.y + this.verticalHitboxInset,
+      width: this.width - this.horizontalHitboxInset * 2,
+      height: this.height - this.verticalHitboxInset * 2,
     };
+  }
+
+  protected setHitboxInsets(horizontal: number, vertical: number): void {
+    this.horizontalHitboxInset = horizontal;
+    this.verticalHitboxInset = vertical;
   }
 
   abstract update(dt: number): void;

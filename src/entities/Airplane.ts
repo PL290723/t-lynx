@@ -22,14 +22,14 @@ const AirplaneColors = {
  * La hitbox del avión tiene 3 px de margen: ocupa de y + 3 a y + 13.
  *
  * Hitbox del lince (GROUND_Y = 300):
- *   - De pie:    y de 271 a 297
- *   - Agachado:  y de 283 a 296
+ *   - De pie:    y de 270 a 298
+ *   - Agachado:  y de 284 a 298
  *
- * - Low:    y = 280 → hitbox 283–293. Choca de pie y agachado: hay que saltar.
- * - Medium: y = 264 → hitbox 267–277. Choca de pie (6 px), deja 6 px libres
- *           sobre el lince agachado (283): hay que agacharse.
- * - High:   y = 236 → hitbox 239–249. Pasa 22 px sobre la cabeza: no requiere
- *           acción (solo choca si el lince salta).
+ * - Low:    y = 280 → hitbox [283, 293). Choca de pie y agachado: hay que saltar.
+ * - Medium: y = 265 → hitbox [268, 278). Choca de pie y deja 6 px libres
+ *           sobre el lince agachado (284): hay que agacharse.
+ * - High:   y = 236 → hitbox [239, 249). Pasa 21 px sobre la cabeza de pie:
+ *           no requiere acción (solo choca si el lince salta).
  */
 export const AirplaneLane = {
   Low: 'LOW',
@@ -41,7 +41,7 @@ export type AirplaneLane = (typeof AirplaneLane)[keyof typeof AirplaneLane];
 
 export const AIRPLANE_LANE_Y: Readonly<Record<AirplaneLane, number>> = {
   [AirplaneLane.Low]: GROUND_Y - 20,
-  [AirplaneLane.Medium]: GROUND_Y - 36,
+  [AirplaneLane.Medium]: GROUND_Y - 35,
   [AirplaneLane.High]: GROUND_Y - 64,
 };
 
@@ -56,7 +56,7 @@ export class Airplane extends Entity {
   private flapFrame = 0;
 
   constructor() {
-    super(0, AIRPLANE_LANE_Y[AirplaneLane.Low], AIRPLANE_WIDTH, AIRPLANE_HEIGHT);
+    super(0, AIRPLANE_LANE_Y[AirplaneLane.Low], AIRPLANE_WIDTH, AIRPLANE_HEIGHT, 3, 3);
   }
 
   get lane(): AirplaneLane {
