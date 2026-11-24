@@ -35,8 +35,11 @@ const TIME_EPSILON_SECONDS = 1e-6;
 export const PlayerState = SpriteAnimation;
 export type PlayerState = (typeof PlayerState)[keyof typeof PlayerState];
 
+type JumpListener = () => void;
+
 export class Player extends Entity {
   private readonly input: InputHandler;
+  private readonly onJump: JumpListener | null;
   private readonly spriteSheet = new SpriteSheet();
   private velocityY = 0;
   private grounded = true;
@@ -49,9 +52,17 @@ export class Player extends Entity {
   private invulnerabilityRemainingSeconds = 0;
   private shieldAuraTime = 0;
 
-  constructor(input: InputHandler) {
-    super(PLAYER_X, GROUND_Y - PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT, 3, 2);
+  constructor(input: InputHandler, onJump: JumpListener | null = null) {
+    super(
+      PLAYER_X,
+      GROUND_Y - PLAYER_HEIGHT,
+      PLAYER_WIDTH,
+      PLAYER_HEIGHT,
+      3,
+      2,
+    );
     this.input = input;
+    this.onJump = onJump;
   }
 
   get state(): PlayerState {
@@ -79,7 +90,11 @@ export class Player extends Entity {
 
     if (this.currentState === PlayerState.Ducking) {
       hitbox.height = (PLAYER_HEIGHT - 4) / 2;
-      hitbox.y = this.position.y + this.height - this.verticalHitboxInset - hitbox.height;
+      hitbox.y =
+        this.position.y +
+        this.height -
+        this.verticalHitboxInset -
+        hitbox.height;
     }
 
     return hitbox;
@@ -87,9 +102,14 @@ export class Player extends Entity {
 
   update(dt: number): void {
     this.savePreviousPosition();
-    const remainingInvulnerability = this.invulnerabilityRemainingSeconds - dt;
+
+    const remainingInvulnerability =
+      this.invulnerabilityRemainingSeconds - dt;
+
     this.invulnerabilityRemainingSeconds =
-      remainingInvulnerability > TIME_EPSILON_SECONDS ? remainingInvulnerability : 0;
+      remainingInvulnerability > TIME_EPSILON_SECONDS
+        ? remainingInvulnerability
+        : 0;
 
     if (this.shieldActive) {
       this.shieldAuraTime += dt;
@@ -124,7 +144,13 @@ export class Player extends Entity {
     }
 
     if (this.shouldRenderSprite()) {
-      ctx.drawImage(frame, position.x, position.y, this.width, this.height);
+      ctx.drawImage(
+        frame,
+        position.x,
+        position.y,
+        this.width,
+        this.height,
+      );
     }
 
     this.renderHitbox(ctx, position.x, position.y);
@@ -141,7 +167,9 @@ export class Player extends Entity {
     }
 
     this.shieldActive = false;
-    this.invulnerabilityRemainingSeconds = SHIELD_INVULNERABILITY_SECONDS;
+    this.invulnerabilityRemainingSeconds =
+      SHIELD_INVULNERABILITY_SECONDS;
+
     return true;
   }
 
@@ -183,6 +211,8 @@ export class Player extends Entity {
       this.velocityY *= JUMP_RELEASE_MULTIPLIER;
       this.jumpHoldTime = JUMP_MAX_HOLD_SECONDS;
     }
+
+    this.onJump?.();
   }
 
   private updateAirborne(dt: number): void {
@@ -207,11 +237,18 @@ export class Player extends Entity {
     }
 
     const fastFalling = this.input.isPressed(InputAction.Duck);
-    const gravityMultiplier = fastFalling ? FAST_FALL_MULTIPLIER : 1;
+    const gravityMultiplier = fastFalling
+      ? FAST_FALL_MULTIPLIER
+      : 1;
+
     this.velocityY += GRAVITY * gravityMultiplier * dt;
 
     const nextY = this.position.y + this.velocityY * dt;
-    if (this.velocityY < 0 && this.jumpStartY - nextY >= JUMP_MAX_HEIGHT) {
+
+    if (
+      this.velocityY < 0 &&
+      this.jumpStartY - nextY >= JUMP_MAX_HEIGHT
+    ) {
       this.position.y = this.jumpStartY - JUMP_MAX_HEIGHT;
       this.velocityY = 0;
       this.jumpHoldTime = JUMP_MAX_HOLD_SECONDS;
@@ -227,7 +264,10 @@ export class Player extends Entity {
   }
 
   private setCrouching(crouching: boolean): void {
-    const nextHeight = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
+    const nextHeight = crouching
+      ? CROUCH_HEIGHT
+      : PLAYER_HEIGHT;
+
     const heightChanged = this.height !== nextHeight;
     this.height = nextHeight;
     this.position.y = GROUND_Y - this.height;
@@ -252,6 +292,7 @@ export class Player extends Entity {
     }
 
     this.animationTime += dt;
+
     const frameDuration =
       this.currentState === PlayerState.Running
         ? RUN_FRAME_DURATION
@@ -259,11 +300,20 @@ export class Player extends Entity {
           ? DUCK_FRAME_DURATION
           : 0;
 
-    if (frameDuration > 0 && this.animationTime >= frameDuration) {
+    if (
+      frameDuration > 0 &&
+      this.animationTime >= frameDuration
+    ) {
       const frameCount =
         this.currentState === PlayerState.Running ? 4 : 2;
-      const framesToAdvance = Math.floor(this.animationTime / frameDuration);
-      this.animationFrame = (this.animationFrame + framesToAdvance) % frameCount;
+
+      const framesToAdvance = Math.floor(
+        this.animationTime / frameDuration,
+      );
+
+      this.animationFrame =
+        (this.animationFrame + framesToAdvance) % frameCount;
+
       this.animationTime %= frameDuration;
     }
   }
@@ -274,8 +324,12 @@ export class Player extends Entity {
     }
 
     const elapsed =
-      SHIELD_INVULNERABILITY_SECONDS - this.invulnerabilityRemainingSeconds;
-    return Math.floor(elapsed / INVULNERABILITY_BLINK_SECONDS) % 2 === 0;
+      SHIELD_INVULNERABILITY_SECONDS -
+      this.invulnerabilityRemainingSeconds;
+
+    return (
+      Math.floor(elapsed / INVULNERABILITY_BLINK_SECONDS) % 2 === 0
+    );
   }
 
   private renderShieldAura(
@@ -299,7 +353,13 @@ export class Player extends Entity {
     ctx.globalAlpha = 0.65 + pulse * 0.25;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(centerX, centerY, radius - 3 + pulse, 0, Math.PI * 2);
+    ctx.arc(
+      centerX,
+      centerY,
+      radius - 3 + pulse,
+      0,
+      Math.PI * 2,
+    );
     ctx.stroke();
     ctx.restore();
   }
