@@ -4,7 +4,7 @@ import { GameLoop } from './core/GameLoop';
 import { StateManager } from './core/StateManager';
 import { Player } from './entities/Player';
 import { drawPrototypeScene } from './graphics/PrototypeScene';
-import { CollisionSystem } from './systems/CollisionSystem';
+import { CollisionSystem, intersects } from './systems/CollisionSystem';
 import { InputAction, InputHandler } from './systems/InputHandler';
 import { ObstacleGenerator } from './systems/ObstacleGenerator';
 import { ScoreManager } from './systems/ScoreManager';
@@ -76,6 +76,8 @@ scoreManager.onMilestone((milestone) => {
 
 stateManager.subscribe((nextState) => {
   if (nextState === GameState.Playing) {
+    player.reset();
+    obstacles.reset();
     scoreManager.reset();
     lastMilestone = 0;
   } else if (nextState === GameState.GameOver) {
@@ -95,20 +97,34 @@ const update = (dt: number): void => {
     }
   } else if (stateManager.state === GameState.GameOver) {
     if (input.justPressed(InputAction.Jump)) {
-      player.reset();
-      obstacles.reset();
       stateManager.transition(GameState.Playing);
     }
   } else if (stateManager.state === GameState.Playing) {
     player.update(dt);
-    obstacles.update(dt);
+    obstacles.update(dt, scoreManager.score);
     scoreManager.update(obstacles.distance);
 
-    const collision = collisions.firstCollision(player, obstacles.activeObstacles);
+    const shieldPowerUp = obstacles.activeShieldPowerUp;
+    if (shieldPowerUp && intersects(player.hitbox, shieldPowerUp.hitbox)) {
+      obstacles.removeShieldPowerUp();
+      player.collectShield();
+      // M-12 reproducirá aquí el sonido de recoger la bebida protectora.
+    }
+
+    const collision = collisions.firstCollision(
+      player,
+      obstacles.activeObstacles,
+    );
+
     if (collision) {
-      // M-09 puede anular la colisión aquí antes de derrotar al jugador.
-      player.defeat();
-      stateManager.transition(GameState.GameOver);
+      if (player.consumeShield()) {
+        // M-10 emitirá aquí partículas desde el obstáculo destruido.
+        obstacles.deactivateObstacle(collision);
+        // M-12 reproducirá aquí el sonido de ruptura del escudo.
+      } else if (!player.isInvulnerable) {
+        player.defeat();
+        stateManager.transition(GameState.GameOver);
+      }
     }
   }
 
@@ -137,7 +153,9 @@ const update = (dt: number): void => {
 
   const playerText =
     `Jugador: ${player.state} · Velocidad Y: ${player.verticalVelocity.toFixed(1)} px/s` +
-    ` · Altura: ${player.height} px`;
+    ` · Altura: ${player.height} px · hasShield: ${player.hasShield}` +
+    ` · Invulnerabilidad restante: ${Math.ceil(player.invulnerabilityRemaining * 1000)} ms`;
+
   if (playerDebug.textContent !== playerText) {
     playerDebug.textContent = playerText;
   }
@@ -149,16 +167,35 @@ const render = (alpha: number): void => {
   const ctx = engine.getContext();
   engine.clear();
   drawPrototypeScene(ctx, engine.width, engine.height);
+
   const isGameOver = stateManager.state === GameState.GameOver;
   const renderAlpha = isGameOver ? 1 : alpha;
+
   obstacles.render(ctx, renderAlpha);
   player.render(ctx, renderAlpha);
-  drawScore(ctx, engine.width, scoreManager.score, scoreManager.highScore);
+  drawScore(
+    ctx,
+    engine.width,
+    scoreManager.score,
+    scoreManager.highScore,
+    player.hasShield,
+  );
 
   if (stateManager.state === GameState.Menu) {
-    drawMessage(ctx, engine.width, engine.height, 'Presiona Espacio o toca para empezar');
+    drawMessage(
+      ctx,
+      engine.width,
+      engine.height,
+      'Presiona Espacio o toca para empezar',
+    );
   } else if (isGameOver) {
-    drawMessage(ctx, engine.width, engine.height, 'GAME OVER - Presiona Espacio o toca para reintentar');
+    drawMessage(
+      ctx,
+      engine.width,
+      engine.height,
+      'GAME OVER - Presiona Espacio o toca para reintentar',
+    );
+
     if (scoreManager.isNewRecord) {
       drawNewRecord(ctx, engine.width, engine.height);
     }
@@ -172,7 +209,9 @@ const render = (alpha: number): void => {
   const obstacleText =
     `Velocidad: ${obstacles.speed.toFixed(1)} px/s · Distancia: ${obstacles.distance.toFixed(1)} px` +
     ` · Obstáculos activos: ${obstacles.activeObstacles.length} (aviones: ${obstacles.activeAirplanes})` +
-    ` · Pool: ${obstacles.poolSize} · Prob. avión: ${Math.round(obstacles.airplaneChance * 100)} %`;
+    ` · Pool: ${obstacles.poolSize} · Prob. avión: ${Math.round(obstacles.airplaneChance * 100)} %` +
+    ` · shieldSpawnedThisSession: ${obstacles.shieldSpawnedThisSession}`;
+
   if (obstacleDebug.textContent !== obstacleText) {
     obstacleDebug.textContent = obstacleText;
   }
@@ -180,6 +219,7 @@ const render = (alpha: number): void => {
   const scoreText =
     `Puntos: ${scoreManager.score} · Récord: ${scoreManager.highScore}` +
     ` · Último hito: ${lastMilestone || '—'}`;
+
   if (scoreDebug.textContent !== scoreText) {
     scoreDebug.textContent = scoreText;
   }
@@ -221,17 +261,52 @@ function drawScore(
   width: number,
   score: number,
   highScore: number,
+  hasShield: boolean,
 ): void {
   const pad = (value: number): string => String(value).padStart(5, '0');
 
+  ctx.save();
   ctx.font = 'bold 14px monospace';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#1e2a38';
   ctx.fillText(`HI ${pad(highScore)}  ${pad(score)}`, width - 12, 10);
+
+  if (hasShield) {
+    drawShieldIndicator(ctx, width - 166, 17);
+  }
+
+  ctx.restore();
 }
 
-function drawNewRecord(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+function drawShieldIndicator(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+): void {
+  ctx.fillStyle = 'rgba(23, 182, 201, 0.65)';
+  ctx.strokeStyle = '#d8fbff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = '#ffe45c';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(centerX + 1, centerY - 5);
+  ctx.lineTo(centerX - 2, centerY);
+  ctx.lineTo(centerX + 2, centerY);
+  ctx.lineTo(centerX - 1, centerY + 5);
+  ctx.stroke();
+}
+
+function drawNewRecord(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): void {
   ctx.font = 'bold 16px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

@@ -27,6 +27,10 @@ export const PLAYER_MAX_JUMP_AIR_SECONDS =
 
 const RUN_FRAME_DURATION = 0.12;
 const DUCK_FRAME_DURATION = 0.2;
+const SHIELD_INVULNERABILITY_SECONDS = 0.5;
+const INVULNERABILITY_BLINK_SECONDS = 0.06;
+const SHIELD_AURA_SIZE = 40;
+const TIME_EPSILON_SECONDS = 1e-6;
 
 export const PlayerState = SpriteAnimation;
 export type PlayerState = (typeof PlayerState)[keyof typeof PlayerState];
@@ -41,6 +45,9 @@ export class Player extends Entity {
   private animationTime = 0;
   private animationFrame = 0;
   private currentState: PlayerState = PlayerState.Running;
+  private shieldActive = false;
+  private invulnerabilityRemainingSeconds = 0;
+  private shieldAuraTime = 0;
 
   constructor(input: InputHandler) {
     super(PLAYER_X, GROUND_Y - PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT, 3, 2);
@@ -53,6 +60,18 @@ export class Player extends Entity {
 
   get verticalVelocity(): number {
     return this.velocityY;
+  }
+
+  get hasShield(): boolean {
+    return this.shieldActive;
+  }
+
+  get isInvulnerable(): boolean {
+    return this.invulnerabilityRemainingSeconds > 0;
+  }
+
+  get invulnerabilityRemaining(): number {
+    return this.invulnerabilityRemainingSeconds;
   }
 
   override get hitbox(): Rect {
@@ -68,6 +87,13 @@ export class Player extends Entity {
 
   update(dt: number): void {
     this.savePreviousPosition();
+    const remainingInvulnerability = this.invulnerabilityRemainingSeconds - dt;
+    this.invulnerabilityRemainingSeconds =
+      remainingInvulnerability > TIME_EPSILON_SECONDS ? remainingInvulnerability : 0;
+
+    if (this.shieldActive) {
+      this.shieldAuraTime += dt;
+    }
 
     if (this.currentState === PlayerState.Defeated) {
       return;
@@ -93,8 +119,30 @@ export class Player extends Entity {
       this.animationFrame,
     );
 
-    ctx.drawImage(frame, position.x, position.y, this.width, this.height);
+    if (this.shieldActive) {
+      this.renderShieldAura(ctx, position.x, position.y);
+    }
+
+    if (this.shouldRenderSprite()) {
+      ctx.drawImage(frame, position.x, position.y, this.width, this.height);
+    }
+
     this.renderHitbox(ctx, position.x, position.y);
+  }
+
+  collectShield(): void {
+    this.shieldActive = true;
+    this.shieldAuraTime = 0;
+  }
+
+  consumeShield(): boolean {
+    if (!this.shieldActive) {
+      return false;
+    }
+
+    this.shieldActive = false;
+    this.invulnerabilityRemainingSeconds = SHIELD_INVULNERABILITY_SECONDS;
+    return true;
   }
 
   defeat(): void {
@@ -119,6 +167,9 @@ export class Player extends Entity {
     this.animationTime = 0;
     this.animationFrame = 0;
     this.currentState = PlayerState.Running;
+    this.shieldActive = false;
+    this.invulnerabilityRemainingSeconds = 0;
+    this.shieldAuraTime = 0;
   }
 
   private startJump(): void {
@@ -215,5 +266,41 @@ export class Player extends Entity {
       this.animationFrame = (this.animationFrame + framesToAdvance) % frameCount;
       this.animationTime %= frameDuration;
     }
+  }
+
+  private shouldRenderSprite(): boolean {
+    if (!this.isInvulnerable) {
+      return true;
+    }
+
+    const elapsed =
+      SHIELD_INVULNERABILITY_SECONDS - this.invulnerabilityRemainingSeconds;
+    return Math.floor(elapsed / INVULNERABILITY_BLINK_SECONDS) % 2 === 0;
+  }
+
+  private renderShieldAura(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+  ): void {
+    const centerX = x + this.width / 2;
+    const centerY = y + this.height / 2;
+    const pulse = (Math.sin(this.shieldAuraTime * 8) + 1) / 2;
+    const radius = SHIELD_AURA_SIZE / 2;
+
+    ctx.save();
+    ctx.fillStyle = '#5de8ff';
+    ctx.globalAlpha = 0.14 + pulse * 0.1;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#d8fbff';
+    ctx.globalAlpha = 0.65 + pulse * 0.25;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius - 3 + pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 }

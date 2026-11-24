@@ -6,6 +6,8 @@ import {
 import { BOOK_VARIANTS, Books } from '../entities/Books';
 import type { Entity } from '../entities/Entity';
 import { PLAYER_MAX_JUMP_AIR_SECONDS, PLAYER_WIDTH, PLAYER_X } from '../entities/Player';
+import { ShieldPowerUp } from '../entities/ShieldPowerUp';
+import { GROUND_Y } from '../graphics/PrototypeScene';
 
 const INITIAL_SPEED = 150; // px/s
 const MAX_SPEED = 360; // px/s
@@ -15,6 +17,10 @@ const FIRST_SPAWN_DISTANCE = 48; // px recorridos al iniciar
 const LANDING_BUFFER_SECONDS = 0.12;
 const MIN_RANDOM_GAP = 40; // px adicionales
 const MAX_RANDOM_GAP = 150;
+
+export const SHIELD_DEBUG_MIN_SCORE = 300;
+const SHIELD_SPAWN_CHANCE = 0.25;
+const SHIELD_SPAWN_Y = GROUND_Y - 56;
 
 // Aviones: aparecen después de cierta distancia y su probabilidad sube con ella.
 // (La distancia es la base del puntaje; M-13 la convertirá en puntos.)
@@ -56,6 +62,8 @@ export class ObstacleGenerator {
   private nextSpawnDistance = FIRST_SPAWN_DISTANCE;
   private hitboxesVisible = false;
   private nextKind: ObstacleKind = ObstacleKind.Books;
+  private readonly shieldPowerUp = new ShieldPowerUp();
+  private shieldSpawned = false;
 
   constructor(canvasWidth: number) {
     this.spawnX = canvasWidth + SPAWN_MARGIN;
@@ -75,6 +83,14 @@ export class ObstacleGenerator {
 
   get poolSize(): number {
     return this.pool.length;
+  }
+
+  get activeShieldPowerUp(): ShieldPowerUp | null {
+    return this.shieldPowerUp.active ? this.shieldPowerUp : null;
+  }
+
+  get shieldSpawnedThisSession(): boolean {
+    return this.shieldSpawned;
   }
 
   /** Probabilidad actual de que el siguiente obstáculo sea un avión (0 a 1). */
@@ -106,9 +122,10 @@ export class ObstacleGenerator {
     for (const obstacle of this.active) {
       obstacle.showHitbox = visible;
     }
+    this.shieldPowerUp.showHitbox = visible;
   }
 
-  update(dt: number): void {
+  update(dt: number, currentScore: number): void {
     this.currentSpeed = Math.min(MAX_SPEED, this.currentSpeed + ACCELERATION * dt);
     this.traveledDistance += this.currentSpeed * dt;
 
@@ -126,12 +143,31 @@ export class ObstacleGenerator {
     }
     this.active.length = activeCount;
 
+    if (this.shieldPowerUp.active) {
+      this.shieldPowerUp.scrollSpeed = this.currentSpeed;
+      this.shieldPowerUp.update(dt);
+
+      if (this.shieldPowerUp.position.x + this.shieldPowerUp.width < 0) {
+        this.shieldPowerUp.deactivate();
+      }
+    }
+
     if (this.traveledDistance >= this.nextSpawnDistance) {
-      const obstacle =
-        this.nextKind === ObstacleKind.Airplane ? this.spawnAirplane() : this.spawnBooks();
-      this.nextKind = Math.random() < this.airplaneChance ? ObstacleKind.Airplane : ObstacleKind.Books;
+      const spawnedEntity = this.shouldSpawnShield(currentScore)
+        ? this.spawnShieldPowerUp()
+        : this.nextKind === ObstacleKind.Airplane
+          ? this.spawnAirplane()
+          : this.spawnBooks();
+
+      this.nextKind =
+        Math.random() < this.airplaneChance
+          ? ObstacleKind.Airplane
+          : ObstacleKind.Books;
+
       this.nextSpawnDistance =
-        this.traveledDistance + this.gapAfter(obstacle) + this.catchUpGap(this.nextKind);
+        this.traveledDistance +
+        this.gapAfter(spawnedEntity) +
+        this.catchUpGap(this.nextKind);
     }
   }
 
@@ -139,13 +175,34 @@ export class ObstacleGenerator {
     for (const obstacle of this.active) {
       obstacle.render(ctx, alpha);
     }
+
+    this.shieldPowerUp.render(ctx, alpha);
+  }
+
+  removeShieldPowerUp(): void {
+    this.shieldPowerUp.deactivate();
+  }
+
+  deactivateObstacle(obstacle: Entity): boolean {
+    const index = this.active.findIndex((candidate) => candidate === obstacle);
+    if (index < 0) {
+      return false;
+    }
+
+    const removed = this.active[index];
+    removed.active = false;
+    this.active.splice(index, 1);
+    return true;
   }
 
   reset(): void {
     for (const obstacle of this.active) {
       obstacle.active = false;
     }
+
     this.active.length = 0;
+    this.shieldPowerUp.deactivate();
+    this.shieldSpawned = false;
     this.currentSpeed = INITIAL_SPEED;
     this.traveledDistance = 0;
     this.nextSpawnDistance = FIRST_SPAWN_DISTANCE;
@@ -179,6 +236,22 @@ export class ObstacleGenerator {
     return airplane;
   }
 
+  private shouldSpawnShield(currentScore: number): boolean {
+    return (
+      !this.shieldSpawned &&
+      currentScore >= SHIELD_DEBUG_MIN_SCORE &&
+      Math.random() < SHIELD_SPAWN_CHANCE
+    );
+  }
+
+  private spawnShieldPowerUp(): ShieldPowerUp {
+    this.shieldPowerUp.activate(this.spawnX, SHIELD_SPAWN_Y);
+    this.shieldPowerUp.scrollSpeed = this.currentSpeed;
+    this.shieldPowerUp.showHitbox = this.hitboxesVisible;
+    this.shieldSpawned = true;
+    return this.shieldPowerUp;
+  }
+
   /**
    * Un avión es más rápido que el suelo, así que alcanza al obstáculo anterior
    * mientras cruza la pantalla. Se agrega la distancia que recorta en ese trayecto
@@ -203,7 +276,8 @@ export class ObstacleGenerator {
       this.currentSpeed + ACCELERATION * (timeToPass + clearanceTime),
     );
     const minGap = obstacle.width + PLAYER_WIDTH + clearanceSpeed * clearanceTime;
-    const randomGap = MIN_RANDOM_GAP + Math.random() * (MAX_RANDOM_GAP - MIN_RANDOM_GAP);
+    const randomGap =
+      MIN_RANDOM_GAP + Math.random() * (MAX_RANDOM_GAP - MIN_RANDOM_GAP);
     return minGap + randomGap;
   }
 }
