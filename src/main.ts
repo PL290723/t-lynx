@@ -1,11 +1,19 @@
 import './style.css';
+import { audioContextManager } from './audio/AudioContextManager';
+import { sounds } from './audio/SoundEffects';
 import { Engine } from './core/Engine';
 import { GameLoop } from './core/GameLoop';
 import { StateManager } from './core/StateManager';
 import { Player } from './entities/Player';
 import { drawPrototypeScene } from './graphics/PrototypeScene';
-import { CollisionSystem, intersects } from './systems/CollisionSystem';
-import { InputAction, InputHandler } from './systems/InputHandler';
+import {
+  CollisionSystem,
+  intersects,
+} from './systems/CollisionSystem';
+import {
+  InputAction,
+  InputHandler,
+} from './systems/InputHandler';
 import { ObstacleGenerator } from './systems/ObstacleGenerator';
 import { ScoreManager } from './systems/ScoreManager';
 import { GameState } from './types/game.types';
@@ -26,6 +34,7 @@ app.innerHTML = `
     <p class="player-debug" aria-live="polite"></p>
     <p class="obstacle-debug"></p>
     <p class="score-debug"></p>
+    <p class="audio-debug" aria-live="polite"></p>
     <pre class="input-debug" aria-live="polite"></pre>
   </header>
   <main class="game-viewport" aria-label="Área de juego">
@@ -35,14 +44,32 @@ app.innerHTML = `
   </main>
 `;
 
-const viewport = app.querySelector<HTMLElement>('.game-viewport');
-const canvas = app.querySelector<HTMLCanvasElement>('.game-canvas');
-const loopDebug = app.querySelector<HTMLParagraphElement>('.loop-debug');
-const gameStateText = app.querySelector<HTMLSpanElement>('.game-state');
-const playerDebug = app.querySelector<HTMLParagraphElement>('.player-debug');
-const obstacleDebug = app.querySelector<HTMLParagraphElement>('.obstacle-debug');
-const inputDebug = app.querySelector<HTMLPreElement>('.input-debug');
-const scoreDebug = app.querySelector<HTMLParagraphElement>('.score-debug');
+const viewport =
+  app.querySelector<HTMLElement>('.game-viewport');
+
+const canvas =
+  app.querySelector<HTMLCanvasElement>('.game-canvas');
+
+const loopDebug =
+  app.querySelector<HTMLParagraphElement>('.loop-debug');
+
+const gameStateText =
+  app.querySelector<HTMLSpanElement>('.game-state');
+
+const playerDebug =
+  app.querySelector<HTMLParagraphElement>('.player-debug');
+
+const obstacleDebug =
+  app.querySelector<HTMLParagraphElement>('.obstacle-debug');
+
+const inputDebug =
+  app.querySelector<HTMLPreElement>('.input-debug');
+
+const scoreDebug =
+  app.querySelector<HTMLParagraphElement>('.score-debug');
+
+const audioDebug =
+  app.querySelector<HTMLParagraphElement>('.audio-debug');
 
 if (
   !viewport ||
@@ -52,7 +79,8 @@ if (
   !playerDebug ||
   !obstacleDebug ||
   !inputDebug ||
-  !scoreDebug
+  !scoreDebug ||
+  !audioDebug
 ) {
   throw new Error('No se pudo crear el área de juego');
 }
@@ -61,16 +89,19 @@ stateManager.subscribe((nextState) => {
   gameStateText.textContent = nextState;
 });
 
+audioContextManager.listenForFirstGesture(window);
+
 const engine = new Engine(canvas, viewport);
 const input = new InputHandler(window, viewport);
-const player = new Player(input);
+const player = new Player(input, () => sounds.jump());
 const obstacles = new ObstacleGenerator(engine.width);
 const collisions = new CollisionSystem();
 const scoreManager = new ScoreManager();
 
 let lastMilestone = 0;
+
 scoreManager.onMilestone((milestone) => {
-  // M-12 reproducirá aquí el sonido de hito.
+  sounds.milestone();
   lastMilestone = milestone;
 });
 
@@ -85,9 +116,18 @@ stateManager.subscribe((nextState) => {
   }
 });
 
-const counters: Record<InputAction, { justPressed: number; released: number }> = {
-  [InputAction.Jump]: { justPressed: 0, released: 0 },
-  [InputAction.Duck]: { justPressed: 0, released: 0 },
+const counters: Record<
+  InputAction,
+  { justPressed: number; released: number }
+> = {
+  [InputAction.Jump]: {
+    justPressed: 0,
+    released: 0,
+  },
+  [InputAction.Duck]: {
+    justPressed: 0,
+    released: 0,
+  },
 };
 
 const update = (dt: number): void => {
@@ -105,10 +145,14 @@ const update = (dt: number): void => {
     scoreManager.update(obstacles.distance);
 
     const shieldPowerUp = obstacles.activeShieldPowerUp;
-    if (shieldPowerUp && intersects(player.hitbox, shieldPowerUp.hitbox)) {
+
+    if (
+      shieldPowerUp &&
+      intersects(player.hitbox, shieldPowerUp.hitbox)
+    ) {
       obstacles.removeShieldPowerUp();
       player.collectShield();
-      // M-12 reproducirá aquí el sonido de recoger la bebida protectora.
+      sounds.shieldPickup();
     }
 
     const collision = collisions.firstCollision(
@@ -120,9 +164,10 @@ const update = (dt: number): void => {
       if (player.consumeShield()) {
         // M-10 emitirá aquí partículas desde el obstáculo destruido.
         obstacles.deactivateObstacle(collision);
-        // M-12 reproducirá aquí el sonido de ruptura del escudo.
+        sounds.shieldBreak();
       } else if (!player.isInvulnerable) {
         player.defeat();
+        sounds.gameOver();
         stateManager.transition(GameState.GameOver);
       }
     }
@@ -140,21 +185,28 @@ const update = (dt: number): void => {
     }
 
     lines.push(
-      `${action.padEnd(4)}  isPressed: ${input.isPressed(action) ? 'SÍ' : 'no'}` +
+      `${action.padEnd(4)}  isPressed: ${
+        input.isPressed(action) ? 'SÍ' : 'no'
+      }` +
         `  justPressed: ${counters[action].justPressed}` +
         `  released: ${counters[action].released}`,
     );
   }
 
   const inputText = lines.join('\n');
+
   if (inputDebug.textContent !== inputText) {
     inputDebug.textContent = inputText;
   }
 
   const playerText =
-    `Jugador: ${player.state} · Velocidad Y: ${player.verticalVelocity.toFixed(1)} px/s` +
-    ` · Altura: ${player.height} px · hasShield: ${player.hasShield}` +
-    ` · Invulnerabilidad restante: ${Math.ceil(player.invulnerabilityRemaining * 1000)} ms`;
+    `Jugador: ${player.state}` +
+    ` · Velocidad Y: ${player.verticalVelocity.toFixed(1)} px/s` +
+    ` · Altura: ${player.height} px` +
+    ` · hasShield: ${player.hasShield}` +
+    ` · Invulnerabilidad restante: ${Math.ceil(
+      player.invulnerabilityRemaining * 1000,
+    )} ms`;
 
   if (playerDebug.textContent !== playerText) {
     playerDebug.textContent = playerText;
@@ -165,20 +217,30 @@ const update = (dt: number): void => {
 
 const render = (alpha: number): void => {
   const ctx = engine.getContext();
+
   engine.clear();
   drawPrototypeScene(ctx, engine.width, engine.height);
 
-  const isGameOver = stateManager.state === GameState.GameOver;
+  const isGameOver =
+    stateManager.state === GameState.GameOver;
+
   const renderAlpha = isGameOver ? 1 : alpha;
 
   obstacles.render(ctx, renderAlpha);
   player.render(ctx, renderAlpha);
+
   drawScore(
     ctx,
     engine.width,
     scoreManager.score,
     scoreManager.highScore,
     player.hasShield,
+  );
+
+  drawSoundStatus(
+    ctx,
+    audioContextManager.isSupported,
+    audioContextManager.isMuted,
   );
 
   if (stateManager.state === GameState.Menu) {
@@ -197,31 +259,60 @@ const render = (alpha: number): void => {
     );
 
     if (scoreManager.isNewRecord) {
-      drawNewRecord(ctx, engine.width, engine.height);
+      drawNewRecord(
+        ctx,
+        engine.width,
+        engine.height,
+      );
     }
   }
 
-  const loopText = `FPS: ${loop.fps || '—'} · Updates/s: ${loop.ups || '—'}`;
+  const loopText =
+    `FPS: ${loop.fps || '—'}` +
+    ` · Updates/s: ${loop.ups || '—'}`;
+
   if (loopDebug.textContent !== loopText) {
     loopDebug.textContent = loopText;
   }
 
   const obstacleText =
-    `Velocidad: ${obstacles.speed.toFixed(1)} px/s · Distancia: ${obstacles.distance.toFixed(1)} px` +
-    ` · Obstáculos activos: ${obstacles.activeObstacles.length} (aviones: ${obstacles.activeAirplanes})` +
-    ` · Pool: ${obstacles.poolSize} · Prob. avión: ${Math.round(obstacles.airplaneChance * 100)} %` +
-    ` · shieldSpawnedThisSession: ${obstacles.shieldSpawnedThisSession}`;
+    `Velocidad: ${obstacles.speed.toFixed(1)} px/s` +
+    ` · Distancia: ${obstacles.distance.toFixed(1)} px` +
+    ` · Obstáculos activos: ${obstacles.activeObstacles.length}` +
+    ` (aviones: ${obstacles.activeAirplanes})` +
+    ` · Pool: ${obstacles.poolSize}` +
+    ` · Prob. avión: ${Math.round(
+      obstacles.airplaneChance * 100,
+    )} %` +
+    ` · shieldSpawnedThisSession: ${
+      obstacles.shieldSpawnedThisSession
+    }`;
 
   if (obstacleDebug.textContent !== obstacleText) {
     obstacleDebug.textContent = obstacleText;
   }
 
   const scoreText =
-    `Puntos: ${scoreManager.score} · Récord: ${scoreManager.highScore}` +
+    `Puntos: ${scoreManager.score}` +
+    ` · Récord: ${scoreManager.highScore}` +
     ` · Último hito: ${lastMilestone || '—'}`;
 
   if (scoreDebug.textContent !== scoreText) {
     scoreDebug.textContent = scoreText;
+  }
+
+  const audioText =
+    `Sonido: ${
+      audioContextManager.isMuted ? 'OFF' : 'ON'
+    } · Web Audio: ` +
+    (!audioContextManager.isSupported
+      ? 'no disponible'
+      : audioContextManager.isReady
+        ? 'activo'
+        : 'esperando gesto');
+
+  if (audioDebug.textContent !== audioText) {
+    audioDebug.textContent = audioText;
   }
 };
 
@@ -235,6 +326,8 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'KeyH') {
     player.showHitbox = !player.showHitbox;
     obstacles.showHitboxes = player.showHitbox;
+  } else if (event.code === 'KeyM') {
+    audioContextManager.toggleMuted();
   }
 });
 
@@ -247,12 +340,24 @@ function drawMessage(
   message: string,
 ): void {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-  ctx.fillRect(20, height / 2 - 24, width - 40, 48);
+  ctx.fillRect(
+    20,
+    height / 2 - 24,
+    width - 40,
+    48,
+  );
+
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 18px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(message, width / 2, height / 2, width - 56);
+
+  ctx.fillText(
+    message,
+    width / 2,
+    height / 2,
+    width - 56,
+  );
 }
 
 /** Marcador provisional en el canvas (M-15 lo reemplaza por el HUD final). */
@@ -263,17 +368,27 @@ function drawScore(
   highScore: number,
   hasShield: boolean,
 ): void {
-  const pad = (value: number): string => String(value).padStart(5, '0');
+  const pad = (value: number): string =>
+    String(value).padStart(5, '0');
 
   ctx.save();
   ctx.font = 'bold 14px monospace';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#1e2a38';
-  ctx.fillText(`HI ${pad(highScore)}  ${pad(score)}`, width - 12, 10);
+
+  ctx.fillText(
+    `HI ${pad(highScore)}  ${pad(score)}`,
+    width - 12,
+    10,
+  );
 
   if (hasShield) {
-    drawShieldIndicator(ctx, width - 166, 17);
+    drawShieldIndicator(
+      ctx,
+      width - 166,
+      17,
+    );
   }
 
   ctx.restore();
@@ -288,7 +403,13 @@ function drawShieldIndicator(
   ctx.strokeStyle = '#d8fbff';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(centerX, centerY, 7, 0, Math.PI * 2);
+  ctx.arc(
+    centerX,
+    centerY,
+    7,
+    0,
+    Math.PI * 2,
+  );
   ctx.fill();
   ctx.stroke();
 
@@ -302,6 +423,30 @@ function drawShieldIndicator(
   ctx.stroke();
 }
 
+function drawSoundStatus(
+  ctx: CanvasRenderingContext2D,
+  isSupported: boolean,
+  isMuted: boolean,
+): void {
+  const label = !isSupported
+    ? 'SONIDO: N/D'
+    : isMuted
+      ? 'SONIDO: OFF'
+      : 'SONIDO: ON';
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(30, 42, 56, 0.72)';
+  ctx.fillRect(8, 8, 94, 18);
+  ctx.fillStyle = isMuted
+    ? '#ffd28a'
+    : '#d8fbff';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(label, 13, 12);
+  ctx.restore();
+}
+
 function drawNewRecord(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -311,5 +456,10 @@ function drawNewRecord(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ffd84d';
-  ctx.fillText('NUEVO RÉCORD', width / 2, height / 2 + 40);
+
+  ctx.fillText(
+    'NUEVO RÉCORD',
+    width / 2,
+    height / 2 + 40,
+  );
 }
