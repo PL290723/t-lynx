@@ -1,4 +1,5 @@
 import './style.css';
+import { registerSW } from 'virtual:pwa-register';
 import { audioContextManager } from './audio/AudioContextManager';
 import { sounds } from './audio/SoundEffects';
 import { Engine } from './core/Engine';
@@ -20,6 +21,8 @@ import {
 import { ObstacleGenerator } from './systems/ObstacleGenerator';
 import { ScoreManager } from './systems/ScoreManager';
 import { GameState } from './types/game.types';
+
+registerSW({ immediate: true });
 
 const app = document.querySelector<HTMLDivElement>('#app');
 
