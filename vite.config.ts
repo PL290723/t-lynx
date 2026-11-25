@@ -20,7 +20,7 @@ export default defineConfig({
         theme_color: '#d97706',
         background_color: '#111111',
         display: 'standalone',
-        orientation: 'landscape',
+        orientation: 'any',
         start_url: '/t-lynx/',
         scope: '/t-lynx/',
         icons: [
