@@ -1,0 +1,71 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: #111;
+  color: #eee;
+  font-family: system-ui, sans-serif;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  padding: 1rem;
+}
+
+.game-header {
+  text-align: center;
+}
+
+.game-header h1 {
+  font-size: 1.5rem;
+}
+
+.game-viewport {
+  display: grid;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  flex: 1;
+  place-items: center;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #050505;
+}
+
+.game-canvas {
+  display: block;
+  background: #000;
+  image-rendering: pixelated;
+}
+
+.input-debug {
+  margin-top: 0.5rem;
+  font-family: Consolas, monospace;
+  font-size: 0.8rem;
+  text-align: left;
+  color: #9fe870;
+}
+
+.player-debug {
+  margin-top: 0.25rem;
+  font-family: Consolas, monospace;
+  font-size: 0.8rem;
+  color: #9fe870;
+}
