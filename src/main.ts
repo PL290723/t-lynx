@@ -6,11 +6,13 @@ import { GameLoop } from './core/GameLoop';
 import { StateManager } from './core/StateManager';
 import { Player } from './entities/Player';
 import { ParticleSystem } from './graphics/ParticleSystem';
-import { GROUND_Y, drawPrototypeScene } from './graphics/PrototypeScene';
+import { ParallaxBackground } from './graphics/ParallaxBackground';
+import { GROUND_Y } from './graphics/PrototypeScene';
 import {
   CollisionSystem,
   intersects,
 } from './systems/CollisionSystem';
+import { DayNightCycle } from './systems/DayNightCycle';
 import {
   InputAction,
   InputHandler,
@@ -32,6 +34,7 @@ app.innerHTML = `
     <h1>T-Lynx</h1>
     <p>Estado actual: <span class="game-state">${stateManager.state}</span></p>
     <p class="loop-debug">FPS: — · Updates/s: —</p>
+    <p class="cycle-debug"></p>
     <p class="player-debug" aria-live="polite"></p>
     <p class="obstacle-debug"></p>
     <p class="score-debug"></p>
@@ -53,6 +56,9 @@ const canvas =
 
 const loopDebug =
   app.querySelector<HTMLParagraphElement>('.loop-debug');
+
+const cycleDebug =
+  app.querySelector<HTMLParagraphElement>('.cycle-debug');
 
 const gameStateText =
   app.querySelector<HTMLSpanElement>('.game-state');
@@ -76,6 +82,7 @@ if (
   !viewport ||
   !canvas ||
   !loopDebug ||
+  !cycleDebug ||
   !gameStateText ||
   !playerDebug ||
   !obstacleDebug ||
@@ -95,6 +102,8 @@ audioContextManager.listenForFirstGesture(window);
 const engine = new Engine(canvas, viewport);
 const input = new InputHandler(window, viewport);
 const particles = new ParticleSystem();
+const dayNightCycle = new DayNightCycle();
+const background = new ParallaxBackground(engine.width, engine.height);
 const DUST_PER_JUMP = 6;
 const DUST_PER_LANDING = 8;
 const PAPER_PER_OBSTACLE = 24;
@@ -128,6 +137,8 @@ stateManager.subscribe((nextState) => {
     obstacles.reset();
     scoreManager.reset();
     particles.reset();
+    dayNightCycle.reset();
+    background.reset();
     lastMilestone = 0;
   } else if (nextState === GameState.GameOver) {
     scoreManager.finishRun();
@@ -161,6 +172,8 @@ const update = (dt: number): void => {
     player.update(dt);
     obstacles.update(dt, scoreManager.score);
     scoreManager.update(obstacles.distance);
+    dayNightCycle.update(scoreManager.score);
+    background.update(dt, obstacles.speed);
 
     const shieldPowerUp = obstacles.activeShieldPowerUp;
 
@@ -250,7 +263,8 @@ const render = (alpha: number): void => {
   const ctx = engine.getContext();
 
   engine.clear();
-  drawPrototypeScene(ctx, engine.width, engine.height);
+  background.setPalette(dayNightCycle.currentPalette);
+  background.render(ctx, alpha);
 
   const isGameOver =
     stateManager.state === GameState.GameOver;
@@ -267,12 +281,14 @@ const render = (alpha: number): void => {
     scoreManager.score,
     scoreManager.highScore,
     player.hasShield,
+    dayNightCycle.currentPalette.hudText,
   );
 
   drawSoundStatus(
     ctx,
     audioContextManager.isSupported,
     audioContextManager.isMuted,
+    dayNightCycle.currentPalette.hudText,
   );
 
   if (stateManager.state === GameState.Menu) {
@@ -335,6 +351,16 @@ const render = (alpha: number): void => {
     scoreDebug.textContent = scoreText;
   }
 
+  const cycleText =
+    `Fase: ${dayNightCycle.phase.toUpperCase()}` +
+    ` · Transición: ${Math.round(
+      dayNightCycle.transitionProgress * 100,
+    )} %`;
+
+  if (cycleDebug.textContent !== cycleText) {
+    cycleDebug.textContent = cycleText;
+  }
+
   const audioText =
     `Sonido: ${
       audioContextManager.isMuted ? 'OFF' : 'ON'
@@ -362,6 +388,9 @@ window.addEventListener('keydown', (event) => {
     obstacles.showHitboxes = player.showHitbox;
   } else if (event.code === 'KeyM') {
     audioContextManager.toggleMuted();
+  } else if (event.code === 'KeyN') {
+    // TEMPORAL: quita esta rama y advancePhaseForDebug() al terminar M-11.
+    dayNightCycle.advancePhaseForDebug();
   }
 });
 
@@ -401,6 +430,7 @@ function drawScore(
   score: number,
   highScore: number,
   hasShield: boolean,
+  hudTextColor: string,
 ): void {
   const pad = (value: number): string =>
     String(value).padStart(5, '0');
@@ -409,7 +439,7 @@ function drawScore(
   ctx.font = 'bold 14px monospace';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
-  ctx.fillStyle = '#1e2a38';
+  ctx.fillStyle = hudTextColor;
 
   ctx.fillText(
     `HI ${pad(highScore)}  ${pad(score)}`,
@@ -461,6 +491,7 @@ function drawSoundStatus(
   ctx: CanvasRenderingContext2D,
   isSupported: boolean,
   isMuted: boolean,
+  hudTextColor: string,
 ): void {
   const label = !isSupported
     ? 'SONIDO: N/D'
@@ -471,9 +502,7 @@ function drawSoundStatus(
   ctx.save();
   ctx.fillStyle = 'rgba(30, 42, 56, 0.72)';
   ctx.fillRect(8, 8, 94, 18);
-  ctx.fillStyle = isMuted
-    ? '#ffd28a'
-    : '#d8fbff';
+  ctx.fillStyle = hudTextColor;
   ctx.font = 'bold 11px monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
