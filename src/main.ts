@@ -5,7 +5,8 @@ import { Engine } from './core/Engine';
 import { GameLoop } from './core/GameLoop';
 import { StateManager } from './core/StateManager';
 import { Player } from './entities/Player';
-import { drawPrototypeScene } from './graphics/PrototypeScene';
+import { ParticleSystem } from './graphics/ParticleSystem';
+import { GROUND_Y, drawPrototypeScene } from './graphics/PrototypeScene';
 import {
   CollisionSystem,
   intersects,
@@ -93,7 +94,23 @@ audioContextManager.listenForFirstGesture(window);
 
 const engine = new Engine(canvas, viewport);
 const input = new InputHandler(window, viewport);
-const player = new Player(input, () => sounds.jump());
+const particles = new ParticleSystem();
+const DUST_PER_JUMP = 6;
+const DUST_PER_LANDING = 8;
+const PAPER_PER_OBSTACLE = 24;
+
+const emitDustAtPlayerFeet = (count: number): void => {
+  particles.emitDust(player.position.x + player.width / 2, GROUND_Y, count);
+};
+
+const player = new Player(
+  input,
+  () => {
+    sounds.jump();
+    emitDustAtPlayerFeet(DUST_PER_JUMP);
+  },
+  () => emitDustAtPlayerFeet(DUST_PER_LANDING),
+);
 const obstacles = new ObstacleGenerator(engine.width);
 const collisions = new CollisionSystem();
 const scoreManager = new ScoreManager();
@@ -110,6 +127,7 @@ stateManager.subscribe((nextState) => {
     player.reset();
     obstacles.reset();
     scoreManager.reset();
+    particles.reset();
     lastMilestone = 0;
   } else if (nextState === GameState.GameOver) {
     scoreManager.finishRun();
@@ -162,7 +180,13 @@ const update = (dt: number): void => {
 
     if (collision) {
       if (player.consumeShield()) {
-        // M-10 emitirá aquí partículas desde el obstáculo destruido.
+        particles.emitPaper(
+          collision.position.x,
+          collision.position.y,
+          collision.width,
+          collision.height,
+          PAPER_PER_OBSTACLE,
+        );
         obstacles.deactivateObstacle(collision);
         sounds.shieldBreak();
       } else if (!player.isInvulnerable) {
@@ -171,6 +195,13 @@ const update = (dt: number): void => {
         stateManager.transition(GameState.GameOver);
       }
     }
+  }
+
+  // Las partículas siguen cayendo en GAME_OVER, pero el mundo ya no se mueve.
+  if (stateManager.state !== GameState.Menu) {
+    const scrollSpeed =
+      stateManager.state === GameState.Playing ? obstacles.speed : 0;
+    particles.update(dt, scrollSpeed, GROUND_Y, engine.width);
   }
 
   const lines: string[] = [];
@@ -228,6 +259,7 @@ const render = (alpha: number): void => {
 
   obstacles.render(ctx, renderAlpha);
   player.render(ctx, renderAlpha);
+  particles.render(ctx, alpha);
 
   drawScore(
     ctx,
@@ -295,7 +327,9 @@ const render = (alpha: number): void => {
   const scoreText =
     `Puntos: ${scoreManager.score}` +
     ` · Récord: ${scoreManager.highScore}` +
-    ` · Último hito: ${lastMilestone || '—'}`;
+    ` · Último hito: ${lastMilestone || '—'}` +
+    ` · Partículas: ${particles.activeCount}/${particles.capacity}` +
+    ` (descartadas: ${particles.dropped})`;
 
   if (scoreDebug.textContent !== scoreText) {
     scoreDebug.textContent = scoreText;
