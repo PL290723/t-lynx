@@ -36,10 +36,12 @@ export const PlayerState = SpriteAnimation;
 export type PlayerState = (typeof PlayerState)[keyof typeof PlayerState];
 
 type JumpListener = () => void;
+type LandListener = () => void;
 
 export class Player extends Entity {
   private readonly input: InputHandler;
   private readonly onJump: JumpListener | null;
+  private readonly onLand: LandListener | null;
   private readonly spriteSheet = new SpriteSheet();
   private velocityY = 0;
   private grounded = true;
@@ -52,7 +54,11 @@ export class Player extends Entity {
   private invulnerabilityRemainingSeconds = 0;
   private shieldAuraTime = 0;
 
-  constructor(input: InputHandler, onJump: JumpListener | null = null) {
+    constructor(
+    input: InputHandler,
+    onJump: JumpListener | null = null,
+    onLand: LandListener | null = null,
+    ) {
     super(
       PLAYER_X,
       GROUND_Y - PLAYER_HEIGHT,
@@ -63,8 +69,8 @@ export class Player extends Entity {
     );
     this.input = input;
     this.onJump = onJump;
+    this.onLand = onLand;
   }
-
   get state(): PlayerState {
     return this.currentState;
   }
@@ -260,6 +266,7 @@ export class Player extends Entity {
       this.grounded = true;
       this.velocityY = 0;
       this.setCrouching(this.input.isPressed(InputAction.Duck));
+      this.onLand?.();
     }
   }
 
