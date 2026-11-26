@@ -20,6 +20,11 @@ interface HudData {
 export class HUD {
   private readonly font: PixelFont;
   private milestoneStartedAt = Number.NEGATIVE_INFINITY;
+  private cachedScore = Number.NaN;
+  private cachedHighScore = Number.NaN;
+  private scoreText = '';
+  private recordText = '';
+  private combinedScoreText = '';
 
   constructor(font = new PixelFont()) {
     this.font = font;
@@ -35,11 +40,17 @@ export class HUD {
 
   draw(ctx: CanvasRenderingContext2D, data: HudData, now = performance.now()): void {
     const { score, highScore, hasShield, isMuted, isSupported, color } = data;
-    const recordText = `HI ${formatScore(highScore)}  `;
-    const scoreText = formatScore(score);
-    const scale = this.font.fit(recordText + scoreText, 416, 2);
-    const scoreX = RIGHT_MARGIN_X - this.font.measure(scoreText, scale);
-    const recordX = scoreX - this.font.measure(recordText, scale) - scale;
+    if (score !== this.cachedScore || highScore !== this.cachedHighScore) {
+      this.cachedScore = score;
+      this.cachedHighScore = highScore;
+      this.recordText = `HI ${formatScore(highScore)}  `;
+      this.scoreText = formatScore(score);
+      this.combinedScoreText = this.recordText + this.scoreText;
+    }
+
+    const scale = this.font.fit(this.combinedScoreText, 416, 2);
+    const scoreX = RIGHT_MARGIN_X - this.font.measure(this.scoreText, scale);
+    const recordX = scoreX - this.font.measure(this.recordText, scale) - scale;
     const scorePanelX = recordX - (hasShield ? 28 : 8);
     const soundText = isSupported && !isMuted ? 'SONIDO: ON' : 'SONIDO: OFF';
     const elapsed = now - this.milestoneStartedAt;
@@ -50,9 +61,9 @@ export class HUD {
     ctx.save();
     drawPixelPanel(ctx, scorePanelX, 8, RIGHT_MARGIN_X + 8 - scorePanelX, 26, color);
     drawPixelPanel(ctx, 8, 8, this.font.measure(soundText, 2) + 16, 26, color);
-    this.font.draw(ctx, 'hud.highScore', recordText, recordX, 14, color, scale);
+    this.font.draw(ctx, 'hud.highScore', this.recordText, recordX, 14, color, scale);
     if (showScore) {
-      this.font.draw(ctx, 'hud.score', scoreText, scoreX, 14, color, scale);
+      this.font.draw(ctx, 'hud.score', this.scoreText, scoreX, 14, color, scale);
     }
     if (hasShield) {
       drawCan(ctx, recordX - 21, 12);
@@ -103,7 +114,13 @@ export function drawPixelPanel(
   textColor: string,
 ): void {
   // DayNightCycle entrega colores #RRGGBB, incluso durante las transiciones.
-  const rgb = Number.parseInt(textColor.slice(1), 16);
+  const rgb =
+    (hexDigit(textColor.charCodeAt(1)) << 20) |
+    (hexDigit(textColor.charCodeAt(2)) << 16) |
+    (hexDigit(textColor.charCodeAt(3)) << 12) |
+    (hexDigit(textColor.charCodeAt(4)) << 8) |
+    (hexDigit(textColor.charCodeAt(5)) << 4) |
+    hexDigit(textColor.charCodeAt(6));
   const luminance =
     0.2126 * linearColor((rgb >>> 16) & 255) +
     0.7152 * linearColor((rgb >>> 8) & 255) +
@@ -117,6 +134,13 @@ export function drawPixelPanel(
   ctx.fillStyle = textColor;
   ctx.fillRect(x + 4, y, width - 8, 2);
   ctx.fillRect(x + 4, y + height - 2, width - 8, 2);
+}
+
+function hexDigit(code: number): number {
+  if (code >= 48 && code <= 57) return code - 48;
+  if (code >= 65 && code <= 70) return code - 55;
+  if (code >= 97 && code <= 102) return code - 87;
+  return 0;
 }
 
 function linearColor(byte: number): number {

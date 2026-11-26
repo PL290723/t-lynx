@@ -71,6 +71,20 @@ const background = new ParallaxBackground(engine.width, engine.height);
 const font = new PixelFont();
 const hud = new HUD(font);
 const gameOver = new GameOverOverlay(font);
+const hudData = {
+  score: 0,
+  highScore: 0,
+  hasShield: false,
+  isMuted: false,
+  isSupported: false,
+  color: '',
+};
+const gameOverData = {
+  score: 0,
+  highScore: 0,
+  isNewRecord: false,
+  color: '',
+};
 const DUST_PER_JUMP = 6;
 const DUST_PER_LANDING = 8;
 const PAPER_PER_OBSTACLE = 24;
@@ -268,19 +282,22 @@ function render(alpha: number): void {
 
   const { score, highScore, isNewRecord } = scoreManager;
   const color = palette.hudText;
-  hud.draw(ctx, {
-    score,
-    highScore,
-    hasShield: player.hasShield,
-    isMuted: audioContextManager.isMuted,
-    isSupported: audioContextManager.isSupported,
-    color,
-  });
+  hudData.score = score;
+  hudData.highScore = highScore;
+  hudData.hasShield = player.hasShield;
+  hudData.isMuted = audioContextManager.isMuted;
+  hudData.isSupported = audioContextManager.isSupported;
+  hudData.color = color;
+  hud.draw(ctx, hudData);
 
   if (stateManager.state === GameState.Menu) {
     hud.drawStartScreen(ctx, color);
   } else if (isGameOver) {
-    gameOver.draw(ctx, { score, highScore, isNewRecord, color });
+    gameOverData.score = score;
+    gameOverData.highScore = highScore;
+    gameOverData.isNewRecord = isNewRecord;
+    gameOverData.color = color;
+    gameOver.draw(ctx, gameOverData);
   }
 
   if (window.innerHeight > window.innerWidth) {
