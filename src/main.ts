@@ -5,13 +5,14 @@ import { sounds } from './audio/SoundEffects';
 import { Engine } from './core/Engine';
 import { GameLoop } from './core/GameLoop';
 import { StateManager } from './core/StateManager';
-import { Player } from './entities/Player';
+import { Player, PlayerState } from './entities/Player';
 import { ParticleSystem } from './graphics/ParticleSystem';
 import { ParallaxBackground } from './graphics/ParallaxBackground';
 import { GROUND_Y } from './graphics/PrototypeScene';
 import { CollisionSystem, intersects } from './systems/CollisionSystem';
 import { DayNightCycle } from './systems/DayNightCycle';
 import { InputAction, InputHandler } from './systems/InputHandler';
+import { EMPTY_LATENCY_TEXT, InputLatencyMeter } from './systems/InputLatencyMeter';
 import { ObstacleGenerator } from './systems/ObstacleGenerator';
 import { ScoreManager } from './systems/ScoreManager';
 import { GameState } from './types/game.types';
@@ -44,6 +45,7 @@ app.innerHTML = `
     <p class="obstacle-debug"></p>
     <p class="score-debug"></p>
     <p class="audio-debug"></p>
+    <p class="latency-debug">${EMPTY_LATENCY_TEXT}</p>
     <pre class="input-debug"></pre>
   </aside>
 `;
@@ -58,6 +60,7 @@ const playerDebug = requireElement<HTMLElement>('.player-debug');
 const obstacleDebug = requireElement<HTMLElement>('.obstacle-debug');
 const scoreDebug = requireElement<HTMLElement>('.score-debug');
 const audioDebug = requireElement<HTMLElement>('.audio-debug');
+const latencyDebug = requireElement<HTMLElement>('.latency-debug');
 const inputDebug = requireElement<HTMLElement>('.input-debug');
 
 const stateManager = new StateManager();
@@ -112,7 +115,10 @@ const counters: Record<InputAction, { justPressed: number; released: number }> =
 
 let lastMilestone = 0;
 let debugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
+let inputLatency = debugEnabled ? new InputLatencyMeter() : null;
+let duckAppliedLastStep = false;
 
+input.setLatencyTracking(debugEnabled);
 debugPanel.hidden = !debugEnabled;
 
 scoreManager.onMilestone((milestone) => {
@@ -123,6 +129,10 @@ scoreManager.onMilestone((milestone) => {
 
 stateManager.subscribe((nextState) => {
   if (nextState === GameState.Playing) {
+    if (inputLatency) {
+      input.clearLatencyActivations();
+      duckAppliedLastStep = false;
+    }
     player.reset();
     obstacles.reset();
     scoreManager.reset();
@@ -138,7 +148,25 @@ stateManager.subscribe((nextState) => {
 });
 
 function updatePlaying(dt: number): void {
+  const previousPlayerState = inputLatency ? player.state : undefined;
   player.update(dt);
+  if (inputLatency) {
+    if (
+      player.state === PlayerState.Jumping && previousPlayerState !== PlayerState.Jumping
+    ) {
+      inputLatency.queue(InputAction.Jump, input.takeLatencyActivation(InputAction.Jump));
+    }
+    // Si el paso empezó en el aire, Duck activa la gravedad de caída rápida.
+    const duckApplied = player.state === PlayerState.Ducking ||
+      (previousPlayerState === PlayerState.Jumping && input.isPressed(InputAction.Duck));
+    if (duckApplied) {
+      const activation = input.takeLatencyActivation(InputAction.Duck);
+      if (!duckAppliedLastStep) {
+        inputLatency.queue(InputAction.Duck, activation);
+      }
+    }
+    duckAppliedLastStep = duckApplied;
+  }
   obstacles.update(dt, scoreManager.score);
   scoreManager.update(obstacles.distance);
   dayNightCycle.update(scoreManager.score);
@@ -304,7 +332,11 @@ function render(alpha: number): void {
     hud.drawPortraitHint(ctx, color);
   }
 
-  if (debugEnabled) {
+  if (inputLatency) {
+    const latencyText = inputLatency.finishFrame(stateManager.state === GameState.Playing);
+    if (latencyText !== undefined) {
+      setDebugText(latencyDebug, latencyText);
+    }
     renderDebug();
   }
 }
@@ -320,8 +352,13 @@ window.addEventListener('keydown', (event) => {
     audioContextManager.toggleMuted();
   } else if (event.code === 'KeyD') {
     debugEnabled = !debugEnabled;
+    inputLatency = debugEnabled ? new InputLatencyMeter() : null;
+    input.setLatencyTracking(debugEnabled);
+    duckAppliedLastStep = false;
     debugPanel.hidden = !debugEnabled;
-    if (!debugEnabled) {
+    if (debugEnabled) {
+      setDebugText(latencyDebug, EMPTY_LATENCY_TEXT);
+    } else {
       player.showHitbox = false;
       obstacles.showHitboxes = false;
     }
