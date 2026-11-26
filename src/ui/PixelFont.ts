@@ -6,6 +6,25 @@ const GLYPH_STEP = GLYPH_WIDTH + 1;
 const LEFT_PIXEL = 0b10000;
 const QUESTION_MARK = [14, 17, 1, 2, 4, 0, 4] as const;
 
+function countGlyphs(text: string): number {
+  let count = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const codePoint = text.charCodeAt(index);
+    if (
+      codePoint >= 0xd800 &&
+      codePoint <= 0xdbff &&
+      index + 1 < text.length
+    ) {
+      const nextCodePoint = text.charCodeAt(index + 1);
+      if (nextCodePoint >= 0xdc00 && nextCodePoint <= 0xdfff) {
+        index += 1;
+      }
+    }
+    count += 1;
+  }
+  return count;
+}
+
 // Cada número es una fila de cinco bits, con el bit más alto a la izquierda.
 const GLYPHS: Readonly<Record<string, readonly number[] | undefined>> = {
   A: [14, 17, 17, 31, 17, 17, 17],
@@ -76,7 +95,7 @@ export class PixelFont {
   private readonly cache = new Map<string, CachedText>();
 
   measure(text: string, scale: PixelScale): number {
-    const length = Array.from(text.normalize("NFC").toUpperCase()).length;
+    const length = countGlyphs(text.normalize("NFC").toUpperCase());
     return Math.max(0, length * GLYPH_STEP - 1) * scale;
   }
 
@@ -125,27 +144,37 @@ export class PixelFont {
     }
 
     const canvas = cached?.canvas ?? document.createElement("canvas");
-    const glyphs = Array.from(text.normalize("NFC").toUpperCase());
-    canvas.width = Math.max(1, (glyphs.length * GLYPH_STEP - 1) * scale);
+    const glyphs = text.normalize("NFC").toUpperCase();
+    const glyphCount = countGlyphs(glyphs);
+    canvas.width = Math.max(1, (glyphCount * GLYPH_STEP - 1) * scale);
     canvas.height = GLYPH_HEIGHT * scale;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("No se pudo crear el canvas de la fuente pixel.");
     ctx.fillStyle = color;
 
-    glyphs.forEach((glyph, index) => {
+    let index = 0;
+    for (const glyph of glyphs) {
       const rows = GLYPHS[glyph] ?? QUESTION_MARK;
-      rows.forEach((bits, row) => {
+      for (let row = 0; row < rows.length; row += 1) {
+        const bits = rows[row];
         for (let column = 0; column < GLYPH_WIDTH; column += 1) {
           if (bits & (LEFT_PIXEL >> column)) {
             const x = (index * GLYPH_STEP + column) * scale;
             ctx.fillRect(x, row * scale, scale, scale);
           }
         }
-      });
-    });
+      }
+      index += 1;
+    }
 
-    this.cache.set(slot, { canvas, text, color, scale });
+    if (cached) {
+      cached.text = text;
+      cached.color = color;
+      cached.scale = scale;
+    } else {
+      this.cache.set(slot, { canvas, text, color, scale });
+    }
     return canvas;
   }
 }
