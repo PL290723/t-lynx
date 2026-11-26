@@ -21,6 +21,7 @@ const MAX_RANDOM_GAP = 150;
 export const SHIELD_DEBUG_MIN_SCORE = 300;
 const SHIELD_SPAWN_CHANCE = 0.25;
 const SHIELD_SPAWN_Y = GROUND_Y - 56;
+const PREWARMED_OBSTACLES_PER_KIND = 4;
 
 // Aviones: aparecen después de cierta distancia y su probabilidad sube con ella.
 // (La distancia es la base del puntaje; M-13 la convertirá en puntos.)
@@ -67,6 +68,9 @@ export class ObstacleGenerator {
 
   constructor(canvasWidth: number) {
     this.spawnX = canvasWidth + SPAWN_MARGIN;
+    for (let index = 0; index < PREWARMED_OBSTACLES_PER_KIND; index += 1) {
+      this.pool.push(new Books(), new Airplane());
+    }
   }
 
   get speed(): number {

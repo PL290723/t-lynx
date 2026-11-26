@@ -17,6 +17,7 @@ const KEY_BINDINGS: Readonly<Record<string, InputAction>> = {
 
 /** Distancia vertical (px CSS) que debe recorrer un dedo para contar como deslizar hacia abajo. */
 const SWIPE_DOWN_THRESHOLD = 30;
+const INPUT_ACTIONS = [InputAction.Jump, InputAction.Duck] as const;
 
 interface ActionState {
   /** Fuentes que mantienen la acción activa: teclas ("key:Space") o toques ("touch:0"). */
@@ -42,6 +43,7 @@ interface ActiveTouch {
  */
 export class InputHandler {
   private readonly states: Record<InputAction, ActionState>;
+  private readonly actionStates: ActionState[];
   private readonly touches = new Map<number, ActiveTouch>();
   private readonly keyTarget: Window;
   private readonly touchTarget: HTMLElement;
@@ -53,6 +55,10 @@ export class InputHandler {
       [InputAction.Jump]: InputHandler.createState(),
       [InputAction.Duck]: InputHandler.createState(),
     };
+    this.actionStates = [
+      this.states[InputAction.Jump],
+      this.states[InputAction.Duck],
+    ];
 
     keyTarget.addEventListener('keydown', this.onKeyDown);
     keyTarget.addEventListener('keyup', this.onKeyUp);
@@ -77,7 +83,7 @@ export class InputHandler {
 
   /** Limpia los estados de un solo cuadro. Llamar al final de cada update. */
   update(): void {
-    for (const state of Object.values(this.states)) {
+    for (const state of this.actionStates) {
       state.justPressed = false;
       state.released = false;
     }
@@ -197,7 +203,7 @@ export class InputHandler {
 
   /** Si la ventana pierde el foco, suelta todo para que ninguna acción se quede pegada. */
   private readonly releaseAll = (): void => {
-    for (const action of Object.values(InputAction)) {
+    for (const action of INPUT_ACTIONS) {
       for (const source of Array.from(this.states[action].sources)) {
         this.release(action, source);
       }
