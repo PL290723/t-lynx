@@ -3,6 +3,8 @@ import type { Rect, Vector2 } from '../types/game.types';
 export abstract class Entity {
   readonly position: Vector2;
   readonly previousPosition: Vector2;
+  private readonly cachedHitbox: Rect;
+  private readonly cachedInterpolatedPosition: Vector2;
   width: number;
   height: number;
   showHitbox = false;
@@ -19,6 +21,8 @@ export abstract class Entity {
   ) {
     this.position = { x, y };
     this.previousPosition = { x, y };
+    this.cachedHitbox = { x: 0, y: 0, width, height };
+    this.cachedInterpolatedPosition = { x, y };
     this.width = width;
     this.height = height;
     this.horizontalHitboxInset = horizontalHitboxInset;
@@ -26,12 +30,11 @@ export abstract class Entity {
   }
 
   get hitbox(): Rect {
-    return {
-      x: this.position.x + this.horizontalHitboxInset,
-      y: this.position.y + this.verticalHitboxInset,
-      width: this.width - this.horizontalHitboxInset * 2,
-      height: this.height - this.verticalHitboxInset * 2,
-    };
+    this.cachedHitbox.x = this.position.x + this.horizontalHitboxInset;
+    this.cachedHitbox.y = this.position.y + this.verticalHitboxInset;
+    this.cachedHitbox.width = this.width - this.horizontalHitboxInset * 2;
+    this.cachedHitbox.height = this.height - this.verticalHitboxInset * 2;
+    return this.cachedHitbox;
   }
 
   protected setHitboxInsets(horizontal: number, vertical: number): void {
@@ -51,14 +54,13 @@ export abstract class Entity {
   protected interpolatedPosition(alpha: number): Vector2 {
     const interpolation = Math.max(0, Math.min(1, alpha));
 
-    return {
-      x:
-        this.previousPosition.x +
-        (this.position.x - this.previousPosition.x) * interpolation,
-      y:
-        this.previousPosition.y +
-        (this.position.y - this.previousPosition.y) * interpolation,
-    };
+    this.cachedInterpolatedPosition.x =
+      this.previousPosition.x +
+      (this.position.x - this.previousPosition.x) * interpolation;
+    this.cachedInterpolatedPosition.y =
+      this.previousPosition.y +
+      (this.position.y - this.previousPosition.y) * interpolation;
+    return this.cachedInterpolatedPosition;
   }
 
   protected renderHitbox(

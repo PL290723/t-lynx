@@ -1,4 +1,5 @@
 import './style.css';
+import { registerSW } from 'virtual:pwa-register';
 import { audioContextManager } from './audio/AudioContextManager';
 import { sounds } from './audio/SoundEffects';
 import { Engine } from './core/Engine';
@@ -8,95 +9,58 @@ import { Player } from './entities/Player';
 import { ParticleSystem } from './graphics/ParticleSystem';
 import { ParallaxBackground } from './graphics/ParallaxBackground';
 import { GROUND_Y } from './graphics/PrototypeScene';
-import {
-  CollisionSystem,
-  intersects,
-} from './systems/CollisionSystem';
+import { CollisionSystem, intersects } from './systems/CollisionSystem';
 import { DayNightCycle } from './systems/DayNightCycle';
-import {
-  InputAction,
-  InputHandler,
-} from './systems/InputHandler';
+import { InputAction, InputHandler } from './systems/InputHandler';
 import { ObstacleGenerator } from './systems/ObstacleGenerator';
 import { ScoreManager } from './systems/ScoreManager';
 import { GameState } from './types/game.types';
+import { GameOverOverlay } from './ui/GameOverOverlay';
+import { HUD } from './ui/HUD';
+import { PixelFont } from './ui/PixelFont';
 
-const app = document.querySelector<HTMLDivElement>('#app');
+registerSW({ immediate: true });
 
-if (!app) {
-  throw new Error('No se encontró el contenedor #app');
+function requireElement<T extends HTMLElement>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) {
+    throw new Error(`No se encontró ${selector}`);
+  }
+  return element;
 }
 
-const stateManager = new StateManager();
-
+const app = requireElement<HTMLDivElement>('#app');
 app.innerHTML = `
-  <header class="game-header">
-    <h1>T-Lynx</h1>
-    <p>Estado actual: <span class="game-state">${stateManager.state}</span></p>
-    <p class="loop-debug">FPS: — · Updates/s: —</p>
-    <p class="cycle-debug"></p>
-    <p class="player-debug" aria-live="polite"></p>
-    <p class="obstacle-debug"></p>
-    <p class="score-debug"></p>
-    <p class="audio-debug" aria-live="polite"></p>
-    <pre class="input-debug" aria-live="polite"></pre>
-  </header>
   <main class="game-viewport" aria-label="Área de juego">
     <canvas class="game-canvas" aria-label="Canvas de T-Lynx">
       Tu navegador no soporta canvas.
     </canvas>
   </main>
+  <aside class="game-header" aria-label="Depuración" hidden>
+    <p>Estado actual: <span class="game-state"></span></p>
+    <p class="loop-debug"></p>
+    <p class="cycle-debug"></p>
+    <p class="player-debug"></p>
+    <p class="obstacle-debug"></p>
+    <p class="score-debug"></p>
+    <p class="audio-debug"></p>
+    <pre class="input-debug"></pre>
+  </aside>
 `;
 
-const viewport =
-  app.querySelector<HTMLElement>('.game-viewport');
+const viewport = requireElement<HTMLElement>('.game-viewport');
+const canvas = requireElement<HTMLCanvasElement>('.game-canvas');
+const debugPanel = requireElement<HTMLElement>('.game-header');
+const gameStateText = requireElement<HTMLElement>('.game-state');
+const loopDebug = requireElement<HTMLElement>('.loop-debug');
+const cycleDebug = requireElement<HTMLElement>('.cycle-debug');
+const playerDebug = requireElement<HTMLElement>('.player-debug');
+const obstacleDebug = requireElement<HTMLElement>('.obstacle-debug');
+const scoreDebug = requireElement<HTMLElement>('.score-debug');
+const audioDebug = requireElement<HTMLElement>('.audio-debug');
+const inputDebug = requireElement<HTMLElement>('.input-debug');
 
-const canvas =
-  app.querySelector<HTMLCanvasElement>('.game-canvas');
-
-const loopDebug =
-  app.querySelector<HTMLParagraphElement>('.loop-debug');
-
-const cycleDebug =
-  app.querySelector<HTMLParagraphElement>('.cycle-debug');
-
-const gameStateText =
-  app.querySelector<HTMLSpanElement>('.game-state');
-
-const playerDebug =
-  app.querySelector<HTMLParagraphElement>('.player-debug');
-
-const obstacleDebug =
-  app.querySelector<HTMLParagraphElement>('.obstacle-debug');
-
-const inputDebug =
-  app.querySelector<HTMLPreElement>('.input-debug');
-
-const scoreDebug =
-  app.querySelector<HTMLParagraphElement>('.score-debug');
-
-const audioDebug =
-  app.querySelector<HTMLParagraphElement>('.audio-debug');
-
-if (
-  !viewport ||
-  !canvas ||
-  !loopDebug ||
-  !cycleDebug ||
-  !gameStateText ||
-  !playerDebug ||
-  !obstacleDebug ||
-  !inputDebug ||
-  !scoreDebug ||
-  !audioDebug
-) {
-  throw new Error('No se pudo crear el área de juego');
-}
-
-stateManager.subscribe((nextState) => {
-  gameStateText.textContent = nextState;
-});
-
+const stateManager = new StateManager();
 audioContextManager.listenForFirstGesture(window);
 
 const engine = new Engine(canvas, viewport);
@@ -104,6 +68,23 @@ const input = new InputHandler(window, viewport);
 const particles = new ParticleSystem();
 const dayNightCycle = new DayNightCycle();
 const background = new ParallaxBackground(engine.width, engine.height);
+const font = new PixelFont();
+const hud = new HUD(font);
+const gameOver = new GameOverOverlay(font);
+const hudData = {
+  score: 0,
+  highScore: 0,
+  hasShield: false,
+  isMuted: false,
+  isSupported: false,
+  color: '',
+};
+const gameOverData = {
+  score: 0,
+  highScore: 0,
+  isNewRecord: false,
+  color: '',
+};
 const DUST_PER_JUMP = 6;
 const DUST_PER_LANDING = 8;
 const PAPER_PER_OBSTACLE = 24;
@@ -120,14 +101,23 @@ const player = new Player(
   },
   () => emitDustAtPlayerFeet(DUST_PER_LANDING),
 );
+
 const obstacles = new ObstacleGenerator(engine.width);
 const collisions = new CollisionSystem();
 const scoreManager = new ScoreManager();
+const counters: Record<InputAction, { justPressed: number; released: number }> = {
+  [InputAction.Jump]: { justPressed: 0, released: 0 },
+  [InputAction.Duck]: { justPressed: 0, released: 0 },
+};
 
 let lastMilestone = 0;
+let debugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
+
+debugPanel.hidden = !debugEnabled;
 
 scoreManager.onMilestone((milestone) => {
   sounds.milestone();
+  hud.onMilestone();
   lastMilestone = milestone;
 });
 
@@ -139,390 +129,208 @@ stateManager.subscribe((nextState) => {
     particles.reset();
     dayNightCycle.reset();
     background.reset();
+    hud.resetMilestone();
     lastMilestone = 0;
   } else if (nextState === GameState.GameOver) {
     scoreManager.finishRun();
+    gameOver.open();
   }
 });
 
-const counters: Record<
-  InputAction,
-  { justPressed: number; released: number }
-> = {
-  [InputAction.Jump]: {
-    justPressed: 0,
-    released: 0,
-  },
-  [InputAction.Duck]: {
-    justPressed: 0,
-    released: 0,
-  },
-};
+function updatePlaying(dt: number): void {
+  player.update(dt);
+  obstacles.update(dt, scoreManager.score);
+  scoreManager.update(obstacles.distance);
+  dayNightCycle.update(scoreManager.score);
+  background.update(dt, obstacles.speed);
 
-const update = (dt: number): void => {
-  if (stateManager.state === GameState.Menu) {
-    if (input.justPressed(InputAction.Jump)) {
-      stateManager.transition(GameState.Playing);
-    }
-  } else if (stateManager.state === GameState.GameOver) {
-    if (input.justPressed(InputAction.Jump)) {
-      stateManager.transition(GameState.Playing);
-    }
-  } else if (stateManager.state === GameState.Playing) {
-    player.update(dt);
-    obstacles.update(dt, scoreManager.score);
-    scoreManager.update(obstacles.distance);
-    dayNightCycle.update(scoreManager.score);
-    background.update(dt, obstacles.speed);
+  const shieldPowerUp = obstacles.activeShieldPowerUp;
+  if (shieldPowerUp && intersects(player.hitbox, shieldPowerUp.hitbox)) {
+    obstacles.removeShieldPowerUp();
+    player.collectShield();
+    sounds.shieldPickup();
+  }
 
-    const shieldPowerUp = obstacles.activeShieldPowerUp;
+  const collision = collisions.firstCollision(player, obstacles.activeObstacles);
+  if (!collision) {
+    return;
+  }
 
-    if (
-      shieldPowerUp &&
-      intersects(player.hitbox, shieldPowerUp.hitbox)
-    ) {
-      obstacles.removeShieldPowerUp();
-      player.collectShield();
-      sounds.shieldPickup();
-    }
-
-    const collision = collisions.firstCollision(
-      player,
-      obstacles.activeObstacles,
+  if (player.consumeShield()) {
+    particles.emitPaper(
+      collision.position.x,
+      collision.position.y,
+      collision.width,
+      collision.height,
+      PAPER_PER_OBSTACLE,
     );
+    obstacles.deactivateObstacle(collision);
+    sounds.shieldBreak();
+  } else if (!player.isInvulnerable) {
+    player.defeat();
+    sounds.gameOver();
+    stateManager.transition(GameState.GameOver);
+  }
+}
 
-    if (collision) {
-      if (player.consumeShield()) {
-        particles.emitPaper(
-          collision.position.x,
-          collision.position.y,
-          collision.width,
-          collision.height,
-          PAPER_PER_OBSTACLE,
-        );
-        obstacles.deactivateObstacle(collision);
-        sounds.shieldBreak();
-      } else if (!player.isInvulnerable) {
-        player.defeat();
-        sounds.gameOver();
-        stateManager.transition(GameState.GameOver);
+function update(dt: number): void {
+  const jumpPressed = input.justPressed(InputAction.Jump);
+
+  switch (stateManager.state) {
+    case GameState.Menu:
+      if (jumpPressed) {
+        stateManager.transition(GameState.Playing);
+      }
+      break;
+    case GameState.GameOver:
+      if (gameOver.canRestart() && jumpPressed) {
+        stateManager.transition(GameState.Playing);
+      } else {
+        // El primer paso que cumple los 500 ms descarta pulsaciones pendientes.
+        gameOver.advance();
+      }
+      break;
+    case GameState.Playing:
+      updatePlaying(dt);
+      break;
+  }
+
+  // En GAME_OVER las partículas siguen cayendo con el escenario detenido.
+  if (stateManager.state !== GameState.Menu) {
+    const scrollSpeed = stateManager.state === GameState.Playing ? obstacles.speed : 0;
+    particles.update(dt, scrollSpeed, GROUND_Y, engine.width);
+  }
+
+  if (debugEnabled) {
+    for (const action of Object.values(InputAction)) {
+      if (input.justPressed(action)) {
+        counters[action].justPressed++;
+      }
+      if (input.released(action)) {
+        counters[action].released++;
       }
     }
   }
 
-  // Las partículas siguen cayendo en GAME_OVER, pero el mundo ya no se mueve.
-  if (stateManager.state !== GameState.Menu) {
-    const scrollSpeed =
-      stateManager.state === GameState.Playing ? obstacles.speed : 0;
-    particles.update(dt, scrollSpeed, GROUND_Y, engine.width);
-  }
-
-  const lines: string[] = [];
-
-  for (const action of Object.values(InputAction)) {
-    if (input.justPressed(action)) {
-      counters[action].justPressed++;
-    }
-
-    if (input.released(action)) {
-      counters[action].released++;
-    }
-
-    lines.push(
-      `${action.padEnd(4)}  isPressed: ${
-        input.isPressed(action) ? 'SÍ' : 'no'
-      }` +
-        `  justPressed: ${counters[action].justPressed}` +
-        `  released: ${counters[action].released}`,
-    );
-  }
-
-  const inputText = lines.join('\n');
-
-  if (inputDebug.textContent !== inputText) {
-    inputDebug.textContent = inputText;
-  }
-
-  const playerText =
-    `Jugador: ${player.state}` +
-    ` · Velocidad Y: ${player.verticalVelocity.toFixed(1)} px/s` +
-    ` · Altura: ${player.height} px` +
-    ` · hasShield: ${player.hasShield}` +
-    ` · Invulnerabilidad restante: ${Math.ceil(
-      player.invulnerabilityRemaining * 1000,
-    )} ms`;
-
-  if (playerDebug.textContent !== playerText) {
-    playerDebug.textContent = playerText;
-  }
-
+  // Consume también la entrada que arrancó o reinició la partida.
   input.update();
-};
+}
 
-const render = (alpha: number): void => {
+function setDebugText(element: HTMLElement, text: string): void {
+  if (element.textContent !== text) {
+    element.textContent = text;
+  }
+}
+
+function renderDebug(): void {
+  setDebugText(gameStateText, stateManager.state);
+  setDebugText(loopDebug, `FPS: ${loop.fps || '—'} · Updates/s: ${loop.ups || '—'}`);
+  setDebugText(
+    cycleDebug,
+    `Fase: ${dayNightCycle.phase.toUpperCase()}` +
+      ` · Transición: ${Math.round(dayNightCycle.transitionProgress * 100)} %`,
+  );
+  setDebugText(
+    playerDebug,
+    `Jugador: ${player.state} · Velocidad Y: ${player.verticalVelocity.toFixed(1)} px/s` +
+      ` · Altura: ${player.height} px · hasShield: ${player.hasShield}` +
+      ` · Invulnerabilidad restante: ${Math.ceil(player.invulnerabilityRemaining * 1000)} ms`,
+  );
+  setDebugText(
+    obstacleDebug,
+    `Velocidad: ${obstacles.speed.toFixed(1)} px/s · Distancia: ${obstacles.distance.toFixed(1)} px` +
+      ` · Obstáculos activos: ${obstacles.activeObstacles.length} (aviones: ${obstacles.activeAirplanes})` +
+      ` · Pool: ${obstacles.poolSize} · Prob. avión: ${Math.round(obstacles.airplaneChance * 100)} %` +
+      ` · shieldSpawnedThisSession: ${obstacles.shieldSpawnedThisSession}`,
+  );
+  setDebugText(
+    scoreDebug,
+    `Puntos: ${scoreManager.score} · Récord: ${scoreManager.highScore}` +
+      ` · Último hito: ${lastMilestone || '—'}` +
+      ` · Partículas: ${particles.activeCount}/${particles.capacity} (descartadas: ${particles.dropped})`,
+  );
+
+  const audioState = !audioContextManager.isSupported
+    ? 'no disponible'
+    : audioContextManager.isReady ? 'activo' : 'esperando gesto';
+  setDebugText(
+    audioDebug,
+    `Sonido: ${audioContextManager.isMuted ? 'OFF' : 'ON'} · Web Audio: ${audioState}`,
+  );
+  setDebugText(
+    inputDebug,
+    Object.values(InputAction).map((action) =>
+      `${action.padEnd(4)} · isPressed: ${input.isPressed(action) ? 'SÍ' : 'no'}` +
+      ` · justPressed: ${counters[action].justPressed} · released: ${counters[action].released}`,
+    ).join('\n'),
+  );
+}
+
+function render(alpha: number): void {
   const ctx = engine.getContext();
+  const palette = dayNightCycle.currentPalette;
+  const isGameOver = stateManager.state === GameState.GameOver;
 
   engine.clear();
-  background.setPalette(dayNightCycle.currentPalette);
+  background.setPalette(palette);
   background.render(ctx, alpha);
 
-  const isGameOver =
-    stateManager.state === GameState.GameOver;
-
   const renderAlpha = isGameOver ? 1 : alpha;
-
   obstacles.render(ctx, renderAlpha);
   player.render(ctx, renderAlpha);
   particles.render(ctx, alpha);
 
-  drawScore(
-    ctx,
-    engine.width,
-    scoreManager.score,
-    scoreManager.highScore,
-    player.hasShield,
-    dayNightCycle.currentPalette.hudText,
-  );
-
-  drawSoundStatus(
-    ctx,
-    audioContextManager.isSupported,
-    audioContextManager.isMuted,
-    dayNightCycle.currentPalette.hudText,
-  );
+  const { score, highScore, isNewRecord } = scoreManager;
+  const color = palette.hudText;
+  hudData.score = score;
+  hudData.highScore = highScore;
+  hudData.hasShield = player.hasShield;
+  hudData.isMuted = audioContextManager.isMuted;
+  hudData.isSupported = audioContextManager.isSupported;
+  hudData.color = color;
+  hud.draw(ctx, hudData);
 
   if (stateManager.state === GameState.Menu) {
-    drawMessage(
-      ctx,
-      engine.width,
-      engine.height,
-      'Presiona Espacio o toca para empezar',
-    );
+    hud.drawStartScreen(ctx, color);
   } else if (isGameOver) {
-    drawMessage(
-      ctx,
-      engine.width,
-      engine.height,
-      'GAME OVER - Presiona Espacio o toca para reintentar',
-    );
-
-    if (scoreManager.isNewRecord) {
-      drawNewRecord(
-        ctx,
-        engine.width,
-        engine.height,
-      );
-    }
+    gameOverData.score = score;
+    gameOverData.highScore = highScore;
+    gameOverData.isNewRecord = isNewRecord;
+    gameOverData.color = color;
+    gameOver.draw(ctx, gameOverData);
   }
 
-  const loopText =
-    `FPS: ${loop.fps || '—'}` +
-    ` · Updates/s: ${loop.ups || '—'}`;
-
-  if (loopDebug.textContent !== loopText) {
-    loopDebug.textContent = loopText;
+  if (window.innerHeight > window.innerWidth) {
+    hud.drawPortraitHint(ctx, color);
   }
 
-  const obstacleText =
-    `Velocidad: ${obstacles.speed.toFixed(1)} px/s` +
-    ` · Distancia: ${obstacles.distance.toFixed(1)} px` +
-    ` · Obstáculos activos: ${obstacles.activeObstacles.length}` +
-    ` (aviones: ${obstacles.activeAirplanes})` +
-    ` · Pool: ${obstacles.poolSize}` +
-    ` · Prob. avión: ${Math.round(
-      obstacles.airplaneChance * 100,
-    )} %` +
-    ` · shieldSpawnedThisSession: ${
-      obstacles.shieldSpawnedThisSession
-    }`;
-
-  if (obstacleDebug.textContent !== obstacleText) {
-    obstacleDebug.textContent = obstacleText;
+  if (debugEnabled) {
+    renderDebug();
   }
-
-  const scoreText =
-    `Puntos: ${scoreManager.score}` +
-    ` · Récord: ${scoreManager.highScore}` +
-    ` · Último hito: ${lastMilestone || '—'}` +
-    ` · Partículas: ${particles.activeCount}/${particles.capacity}` +
-    ` (descartadas: ${particles.dropped})`;
-
-  if (scoreDebug.textContent !== scoreText) {
-    scoreDebug.textContent = scoreText;
-  }
-
-  const cycleText =
-    `Fase: ${dayNightCycle.phase.toUpperCase()}` +
-    ` · Transición: ${Math.round(
-      dayNightCycle.transitionProgress * 100,
-    )} %`;
-
-  if (cycleDebug.textContent !== cycleText) {
-    cycleDebug.textContent = cycleText;
-  }
-
-  const audioText =
-    `Sonido: ${
-      audioContextManager.isMuted ? 'OFF' : 'ON'
-    } · Web Audio: ` +
-    (!audioContextManager.isSupported
-      ? 'no disponible'
-      : audioContextManager.isReady
-        ? 'activo'
-        : 'esperando gesto');
-
-  if (audioDebug.textContent !== audioText) {
-    audioDebug.textContent = audioText;
-  }
-};
+}
 
 const loop = new GameLoop(update, render);
 
 window.addEventListener('keydown', (event) => {
-  if (event.repeat) {
+  if (event.repeat || event.ctrlKey || event.altKey || event.metaKey) {
     return;
   }
 
-  if (event.code === 'KeyH') {
+  if (event.code === 'KeyM') {
+    audioContextManager.toggleMuted();
+  } else if (event.code === 'KeyD') {
+    debugEnabled = !debugEnabled;
+    debugPanel.hidden = !debugEnabled;
+    if (!debugEnabled) {
+      player.showHitbox = false;
+      obstacles.showHitboxes = false;
+    }
+  } else if (debugEnabled && event.code === 'KeyH') {
     player.showHitbox = !player.showHitbox;
     obstacles.showHitboxes = player.showHitbox;
-  } else if (event.code === 'KeyM') {
-    audioContextManager.toggleMuted();
-  } else if (event.code === 'KeyN') {
-    // TEMPORAL: quita esta rama y advancePhaseForDebug() al terminar M-11.
+  } else if (debugEnabled && event.code === 'KeyN') {
     dayNightCycle.advancePhaseForDebug();
   }
 });
 
 loop.start();
-
-function drawMessage(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  message: string,
-): void {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-  ctx.fillRect(
-    20,
-    height / 2 - 24,
-    width - 40,
-    48,
-  );
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 18px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  ctx.fillText(
-    message,
-    width / 2,
-    height / 2,
-    width - 56,
-  );
-}
-
-/** Marcador provisional en el canvas (M-15 lo reemplaza por el HUD final). */
-function drawScore(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  score: number,
-  highScore: number,
-  hasShield: boolean,
-  hudTextColor: string,
-): void {
-  const pad = (value: number): string =>
-    String(value).padStart(5, '0');
-
-  ctx.save();
-  ctx.font = 'bold 14px monospace';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = hudTextColor;
-
-  ctx.fillText(
-    `HI ${pad(highScore)}  ${pad(score)}`,
-    width - 12,
-    10,
-  );
-
-  if (hasShield) {
-    drawShieldIndicator(
-      ctx,
-      width - 166,
-      17,
-    );
-  }
-
-  ctx.restore();
-}
-
-function drawShieldIndicator(
-  ctx: CanvasRenderingContext2D,
-  centerX: number,
-  centerY: number,
-): void {
-  ctx.fillStyle = 'rgba(23, 182, 201, 0.65)';
-  ctx.strokeStyle = '#d8fbff';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(
-    centerX,
-    centerY,
-    7,
-    0,
-    Math.PI * 2,
-  );
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.strokeStyle = '#ffe45c';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(centerX + 1, centerY - 5);
-  ctx.lineTo(centerX - 2, centerY);
-  ctx.lineTo(centerX + 2, centerY);
-  ctx.lineTo(centerX - 1, centerY + 5);
-  ctx.stroke();
-}
-
-function drawSoundStatus(
-  ctx: CanvasRenderingContext2D,
-  isSupported: boolean,
-  isMuted: boolean,
-  hudTextColor: string,
-): void {
-  const label = !isSupported
-    ? 'SONIDO: N/D'
-    : isMuted
-      ? 'SONIDO: OFF'
-      : 'SONIDO: ON';
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(30, 42, 56, 0.72)';
-  ctx.fillRect(8, 8, 94, 18);
-  ctx.fillStyle = hudTextColor;
-  ctx.font = 'bold 11px monospace';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(label, 13, 12);
-  ctx.restore();
-}
-
-function drawNewRecord(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-): void {
-  ctx.font = 'bold 16px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#ffd84d';
-
-  ctx.fillText(
-    'NUEVO RÉCORD',
-    width / 2,
-    height / 2 + 40,
-  );
-}
