@@ -19,16 +19,23 @@ const KEY_BINDINGS: Readonly<Record<string, InputAction>> = {
 const SWIPE_DOWN_THRESHOLD = 30;
 const INPUT_ACTIONS = [InputAction.Jump, InputAction.Duck] as const;
 
+export interface InputActivation {
+  readonly timeStamp: number;
+  readonly touchStartTimeStamp: number | undefined;
+}
+
 interface ActionState {
   /** Fuentes que mantienen la acción activa: teclas ("key:Space") o toques ("touch:0"). */
   sources: Set<string>;
   justPressed: boolean;
   released: boolean;
+  latencyActivation: InputActivation | undefined;
 }
 
 interface ActiveTouch {
   startY: number;
   action: InputAction;
+  startTimeStamp: number | undefined;
 }
 
 /**
@@ -47,6 +54,7 @@ export class InputHandler {
   private readonly touches = new Map<number, ActiveTouch>();
   private readonly keyTarget: Window;
   private readonly touchTarget: HTMLElement;
+  private trackLatency = false;
 
   constructor(keyTarget: Window, touchTarget: HTMLElement) {
     this.keyTarget = keyTarget;
@@ -81,11 +89,34 @@ export class InputHandler {
     return this.states[action].released;
   }
 
+  setLatencyTracking(enabled: boolean): void {
+    this.trackLatency = enabled;
+    if (!enabled) {
+      this.clearLatencyActivations();
+    }
+  }
+
+  takeLatencyActivation(action: InputAction): InputActivation | undefined {
+    const state = this.states[action];
+    const activation = state.latencyActivation;
+    state.latencyActivation = undefined;
+    return activation;
+  }
+
+  clearLatencyActivations(): void {
+    this.states[InputAction.Jump].latencyActivation = undefined;
+    this.states[InputAction.Duck].latencyActivation = undefined;
+  }
+
   /** Limpia los estados de un solo cuadro. Llamar al final de cada update. */
   update(): void {
     for (const state of this.actionStates) {
       state.justPressed = false;
       state.released = false;
+    }
+    if (this.trackLatency) {
+      // El salto se lee una vez. Duck puede seguir activo en el siguiente paso.
+      this.states[InputAction.Jump].latencyActivation = undefined;
     }
   }
 
@@ -101,13 +132,26 @@ export class InputHandler {
   }
 
   private static createState(): ActionState {
-    return { sources: new Set<string>(), justPressed: false, released: false };
+    return {
+      sources: new Set<string>(),
+      justPressed: false,
+      released: false,
+      latencyActivation: undefined,
+    };
   }
 
-  private press(action: InputAction, source: string): void {
+  private press(
+    action: InputAction,
+    source: string,
+    event: Event,
+    touchStartTimeStamp?: number,
+  ): void {
     const state = this.states[action];
 
     if (state.sources.size === 0) {
+      if (this.trackLatency && (action === InputAction.Duck || !state.justPressed)) {
+        state.latencyActivation = { timeStamp: event.timeStamp, touchStartTimeStamp };
+      }
       state.justPressed = true;
     }
 
@@ -123,6 +167,9 @@ export class InputHandler {
 
     if (state.sources.size === 0) {
       state.released = true;
+      if (this.trackLatency && action === InputAction.Duck) {
+        state.latencyActivation = undefined;
+      }
     }
   }
 
@@ -141,7 +188,7 @@ export class InputHandler {
       return;
     }
 
-    this.press(action, `key:${event.code}`);
+    this.press(action, `key:${event.code}`, event);
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
@@ -160,9 +207,14 @@ export class InputHandler {
     // Evita scroll, zoom con doble toque y el clic simulado.
     event.preventDefault();
 
+    const startTimeStamp = this.trackLatency ? event.timeStamp : undefined;
     for (const touch of Array.from(event.changedTouches)) {
-      this.touches.set(touch.identifier, { startY: touch.clientY, action: InputAction.Jump });
-      this.press(InputAction.Jump, `touch:${touch.identifier}`);
+      this.touches.set(touch.identifier, {
+        startY: touch.clientY,
+        action: InputAction.Jump,
+        startTimeStamp,
+      });
+      this.press(InputAction.Jump, `touch:${touch.identifier}`, event);
     }
   };
 
@@ -180,7 +232,7 @@ export class InputHandler {
       if (touch.clientY - active.startY >= SWIPE_DOWN_THRESHOLD) {
         const source = `touch:${touch.identifier}`;
         this.release(InputAction.Jump, source);
-        this.press(InputAction.Duck, source);
+        this.press(InputAction.Duck, source, event, active.startTimeStamp);
         active.action = InputAction.Duck;
       }
     }
@@ -210,5 +262,8 @@ export class InputHandler {
     }
 
     this.touches.clear();
+    if (this.trackLatency) {
+      this.clearLatencyActivations();
+    }
   };
 }
